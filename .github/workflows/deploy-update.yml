@@ -1,0 +1,65 @@
+name: Build & Release Automático AliadoAPP
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - 'v*'
+
+jobs:
+  test_and_release:
+    name: Testar, Compilar e Publicar Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm ci --legacy-peer-deps
+
+      - name: Verificação de Tipos TypeScript
+        run: npx tsc --noEmit
+
+      - name: Executar Bateria de Testes Automatizados
+        run: npm test
+
+      - name: Determinar Versão da Release
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Criar ou Atualizar GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Igreja Metodista Aliado - Release ${{ steps.get_version.outputs.version }}
+          body: |
+            ## ⛪ Igreja Metodista Aliado - Atualização Oficial
+            
+            Nova atualização disponível para líderes, obreiros, pastoral e membros da Igreja Metodista Aliado.
+            
+            ### ✨ O que há de novo:
+            - Atualizador automático in-app integrado com GitHub Releases.
+            - Validação estrita de credenciais com armazenamento criptografado no dispositivo.
+            - Correção do cálculo financeiro de milhar e centavos no caixa e orçamentos do MAAD.
+            - Sistema de travas contra cliques duplos concorrentes.
+            - Calendário pastoral integrado com cultos fixos e cancelamento individual de datas.
+            - Escalas de ministérios vinculadas a perfis oficiais de voluntários.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
