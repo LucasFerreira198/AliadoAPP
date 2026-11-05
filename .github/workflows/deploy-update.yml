@@ -20,10 +20,10 @@ jobs:
       - name: Checkout do Repositório
         uses: actions/checkout@v4
 
-      - name: Configurar Node.js 20
+      - name: Configurar Node.js 22 (LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Instalar Dependências
@@ -34,6 +34,13 @@ jobs:
 
       - name: Executar Bateria de Testes Automatizados
         run: npm test
+
+      - name: Gerar Build de Exportação Web
+        run: npx expo export --platform web
+
+      - name: Compactar Build Web para Distribuição
+        run: |
+          cd dist && zip -r ../aliadoapp-web-build.zip . && cd ..
 
       - name: Determinar Versão da Release
         id: get_version
@@ -47,6 +54,8 @@ jobs:
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: Igreja Metodista Aliado - Release ${{ steps.get_version.outputs.version }}
+          files: |
+            aliadoapp-web-build.zip
           body: |
             ## ⛪ Igreja Metodista Aliado - Atualização Oficial
             
