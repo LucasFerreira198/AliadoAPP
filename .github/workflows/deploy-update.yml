@@ -143,8 +143,11 @@ jobs:
 
       - name: Compilar Pacote iOS para Simulador
         run: |
-          xcodebuild -workspace ios/aliadoapp.xcworkspace \
-            -scheme aliadoapp \
+          WORKSPACE=$(find ios -name "*.xcworkspace" -maxdepth 1 | head -n 1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "Compilando workspace: $WORKSPACE com scheme: $SCHEME"
+          xcodebuild -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
             -configuration Release \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build \
@@ -152,9 +155,14 @@ jobs:
 
       - name: Compactar Pacote iOS (.app)
         run: |
-          cd build/Build/Products/Release-iphonesimulator
-          zip -r ../../../../aliadoapp-ios-simulator.zip aliadoapp.app
-          cd ../../../..
+          APP_PATH=$(find build/Build/Products -name "*.app" | head -n 1)
+          echo "Localizado pacote app: $APP_PATH"
+          APP_DIR=$(dirname "$APP_PATH")
+          APP_NAME=$(basename "$APP_PATH")
+          cd "$APP_DIR"
+          zip -r "$GITHUB_WORKSPACE/aliadoapp-ios-simulator.zip" "$APP_NAME"
+          cd "$GITHUB_WORKSPACE"
+          ls -lh aliadoapp-ios-simulator.zip
 
       - name: Determinar Versão
         id: get_version
