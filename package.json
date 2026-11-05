@@ -15,6 +15,7 @@
     "expo-router": "~58.0.30",
     "expo-secure-store": "~58.0.2",
     "expo-status-bar": "~58.0.4",
+    "expo-system-ui": "~58.0.7",
     "expo-updates": "~58.0.21",
     "lucide-react-native": "^1.68.0",
     "react": "19.3.0",
@@ -32,10 +33,12 @@
   },
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "node --test --experimental-strip-types __tests__/**/*.test.ts"
+    "test": "node --test --experimental-strip-types __tests__/**/*.test.ts",
+    "build:android": "eas build -p android --profile preview",
+    "build:ios": "eas build -p ios --profile preview"
   },
   "private": true
 }

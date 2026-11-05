@@ -9,8 +9,8 @@ on:
       - 'v*'
 
 jobs:
-  test_and_release:
-    name: Testar, Compilar e Publicar Release
+  build_android_and_release:
+    name: Testar, Gerar Web e Compilar APK Android
     runs-on: ubuntu-latest
 
     permissions:
@@ -25,6 +25,13 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+          cache: 'gradle'
 
       - name: Instalar Dependências
         run: npm ci --legacy-peer-deps
@@ -42,26 +49,64 @@ jobs:
         run: |
           cd dist && zip -r ../aliadoapp-web-build.zip . && cd ..
 
-      - name: Determinar Versão da Release
+      - name: Gerar Projeto Android Nativo (CNG)
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Compilar APK Android (Release)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cd ..
+
+      - name: Determinar Versão e Extrair APK
         id: get_version
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "version=v$VERSION" >> $GITHUB_OUTPUT
+          
+          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk aliadoapp-v$VERSION.apk
+          elif [ -f android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release-unsigned.apk aliadoapp-v$VERSION.apk
+          else
+            cp android/app/build/outputs/apk/debug/app-debug.apk aliadoapp-v$VERSION.apk
+          fi
+          echo "APK gerado com sucesso:"
+          ls -lh aliadoapp-v$VERSION.apk
 
-      - name: Criar ou Atualizar GitHub Release
+      - name: Salvar Artefato APK Android
+        uses: actions/upload-artifact@v4
+        with:
+          name: aliadoapp-android-apk
+          path: aliadoapp-*.apk
+
+      - name: Salvar Artefato Web
+        uses: actions/upload-artifact@v4
+        with:
+          name: aliadoapp-web-build
+          path: aliadoapp-web-build.zip
+
+      - name: Publicar ou Atualizar GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: Igreja Metodista Aliado - Release ${{ steps.get_version.outputs.version }}
           files: |
+            aliadoapp-*.apk
             aliadoapp-web-build.zip
           body: |
             ## ⛪ Igreja Metodista Aliado - Atualização Oficial
-            
-            Nova atualização disponível para líderes, obreiros, pastoral e membros da Igreja Metodista Aliado.
-            
-            ### ✨ O que há de novo:
+
+            Nova versão disponível com suporte a compilação móvel nativa e web.
+
+            ### 📲 Downloads Disponíveis:
+            - **Android APK:** Baixe o arquivo `.apk` anexado para instalar diretamente em qualquer smartphone ou tablet Android (sem passar por lojas).
+            - **Web / Desktop:** Baixe `aliadoapp-web-build.zip` para hospedar em qualquer servidor ou CDN web.
+            - **iOS:** Utilize `npx eas-cli@latest build -p ios --profile preview` via EAS Cloud ou acesse via navegador Safari ("Adicionar à Tela de Início").
+
+            ### ✨ Recursos Inclusos:
             - Atualizador automático in-app integrado com GitHub Releases.
             - Validação estrita de credenciais com armazenamento criptografado no dispositivo.
             - Correção do cálculo financeiro de milhar e centavos no caixa e orçamentos do MAAD.
@@ -70,5 +115,66 @@ jobs:
             - Escalas de ministérios vinculadas a perfis oficiais de voluntários.
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build_ios:
+    name: Compilar Pacote iOS (Simulator)
+    runs-on: macos-latest
+    needs: build_android_and_release
+    continue-on-error: true
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22 (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm ci --legacy-peer-deps
+
+      - name: Gerar Projeto iOS Nativo (CNG)
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Compilar Pacote iOS para Simulador
+        run: |
+          xcodebuild -workspace ios/aliadoapp.xcworkspace \
+            -scheme aliadoapp \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+      - name: Compactar Pacote iOS (.app)
+        run: |
+          cd build/Build/Products/Release-iphonesimulator
+          zip -r ../../../../aliadoapp-ios-simulator.zip aliadoapp.app
+          cd ../../../..
+
+      - name: Determinar Versão
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Salvar Artefato iOS
+        uses: actions/upload-artifact@v4
+        with:
+          name: aliadoapp-ios-simulator
+          path: aliadoapp-ios-simulator.zip
+
+      - name: Anexar Pacote iOS na GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          files: |
+            aliadoapp-ios-simulator.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
