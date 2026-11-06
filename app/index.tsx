@@ -5,10 +5,12 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity, 
-  RefreshControl 
+  RefreshControl,
+  Alert
 } from 'react-native';
 import { router } from 'expo-router';
 import { 
+  Flame,
   Plus, 
   Cake, 
   Receipt, 
@@ -174,6 +176,23 @@ export default function HomeScreen() {
         {/* ======================================================== */}
         {isPastor ? (
           <>
+            {/* Card de Acolhimento Pastoral */}
+            <View style={[styles.pastoralGreetingCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+              <View style={styles.pastoralGreetingRow}>
+                <View style={styles.pastoralFlameIcon}>
+                  <Flame size={20} color="#FFFFFF" fill="#F59E0B" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.pastoralGreetingTitle, { color: themeColors.textPrimary }]}>
+                    Graça e Paz, Pastor {currentUser.full_name?.split(' ')[1] || currentUser.full_name?.split(' ')[0]}!
+                  </Text>
+                  <Text style={[styles.pastoralGreetingVerse, { color: themeColors.textSecondary }]}>
+                    "O Senhor te abençoe e te guarde; faça resplandecer o Seu rosto sobre ti." • Nm 6:24
+                  </Text>
+                </View>
+              </View>
+            </View>
+
             {/* Barra de Ações Rápidas Pastorais */}
             <View style={styles.quickBar}>
               <Button
@@ -256,7 +275,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </ScrollView>
 
-            {/* ORÇAMENTOS PENDENTES DE TRIAGEM PASTORAL (LÍDER -> PASTOR -> MAAD) */}
+            {/* ORÇAMENTOS PENDENTES DE ANÁLISE PASTORAL (LÍDER -> PASTOR -> MAAD) */}
             {budgetsPendingPastor.length > 0 && (
               <Card 
                 style={[
@@ -271,11 +290,11 @@ export default function HomeScreen() {
                 <View style={styles.reviewHeader}>
                   <DollarSign size={20} color="#D97706" />
                   <Text style={[styles.reviewTitle, { color: themeColors.textPrimary }]}>
-                    Orçamentos Aguardando Sua Triagem ({budgetsPendingPastor.length})
+                    Orçamentos para sua análise, Pastor ({budgetsPendingPastor.length})
                   </Text>
                 </View>
                 <Text style={[styles.reviewSub, { color: themeColors.textSecondary }]}>
-                  Avalie a necessidade ministerial e encaminhe ao MAAD para auditoria e liberação contábil.
+                  Avalie o pedido ministerial e autorize o envio ao MAAD para auditoria e liberação contábil.
                 </Text>
 
                 {budgetsPendingPastor.map(b => (
@@ -306,7 +325,10 @@ export default function HomeScreen() {
                         onPress={async () => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                           await pastorReviewBudget(b.id, 'encaminhar_maad');
-                          alert('Orçamento aprovado na triagem pastoral e encaminhado ao MAAD.');
+                          Alert.alert(
+                            'Orçamento Autorizado!',
+                            'A solicitação foi avaliada com sucesso e encaminhada para a equipe do MAAD liberar a verba.'
+                          );
                         }}
                         style={styles.forwardMaadBtn}
                       >
@@ -319,7 +341,10 @@ export default function HomeScreen() {
                         onPress={async () => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                           await pastorReviewBudget(b.id, 'rejeitar');
-                          alert('Orçamento não autorizado pelo pastor.');
+                          Alert.alert(
+                            'Orçamento Indeferido',
+                            'O pedido foi recusado na triagem pastoral e o líder do ministério foi notificado.'
+                          );
                         }}
                         style={[
                           styles.rejectBudgetBtn,
@@ -851,6 +876,41 @@ const styles = StyleSheet.create({
   adminCardSub: {
     fontSize: 12,
     marginTop: 2,
+  },
+  pastoralGreetingCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  pastoralGreetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pastoralFlameIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pastoralGreetingTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  pastoralGreetingVerse: {
+    fontSize: 12,
+    marginTop: 3,
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
   quickBar: {
     marginBottom: 14,

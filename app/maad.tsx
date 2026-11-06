@@ -19,7 +19,9 @@ import {
   ArrowDownLeft, 
   FileText,
   Calendar,
-  X
+  X,
+  Eye,
+  EyeOff
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../src/context/AppContext';
@@ -55,6 +57,7 @@ export default function MaadScreen() {
   const [txAmountStr, setTxAmountStr] = useState('');
   const [loading, setLoading] = useState(false);
   const [processingBudgetId, setProcessingBudgetId] = useState<string | null>(null);
+  const [isBalanceVisible, setIsBalanceVisible] = useState(true);
 
   const isMaadOrPastor = currentUser?.role === 'maad' || currentUser?.role === 'pastor';
   const summary = getCashSummary();
@@ -130,11 +133,31 @@ export default function MaadScreen() {
         </Text>
       </View>
 
-      {/* Cartão de Resumo Financeiro */}
+      {/* Cartão de Resumo Financeiro com Proteção de Privacidade */}
       <View style={[styles.summaryCard, { backgroundColor: '#0F172A' }]}>
-        <Text style={styles.summaryLabel}>Saldo Atual da Igreja</Text>
+        <View style={styles.summaryTopRow}>
+          <Text style={styles.summaryLabel}>Saldo Atual da Igreja</Text>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setIsBalanceVisible(!isBalanceVisible);
+            }}
+            style={styles.eyeBtn}
+            accessibilityLabel={isBalanceVisible ? 'Ocultar Saldo' : 'Mostrar Saldo'}
+          >
+            {isBalanceVisible ? (
+              <Eye size={18} color="#94A3B8" />
+            ) : (
+              <EyeOff size={18} color="#94A3B8" />
+            )}
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.summaryBalance}>
-          R$ {summary.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          {isBalanceVisible 
+            ? `R$ ${summary.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
+            : 'R$ ••••••'}
         </Text>
 
         <View style={styles.summaryRow}>
@@ -145,7 +168,9 @@ export default function MaadScreen() {
             <View>
               <Text style={styles.subItemLabel}>Entradas (Mês)</Text>
               <Text style={styles.subItemValGreen}>
-                + R$ {summary.totalEntradas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {isBalanceVisible 
+                  ? `+ R$ ${summary.totalEntradas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                  : '+ R$ ••••••'}
               </Text>
             </View>
           </View>
@@ -157,7 +182,9 @@ export default function MaadScreen() {
             <View>
               <Text style={styles.subItemLabel}>Saídas (Mês)</Text>
               <Text style={styles.subItemValRed}>
-                - R$ {summary.totalSaidas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {isBalanceVisible 
+                  ? `- R$ ${summary.totalSaidas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                  : '- R$ ••••••'}
               </Text>
             </View>
           </View>
@@ -497,6 +524,20 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
+  summaryTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  eyeBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    minWidth: 36,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   summaryLabel: {
     fontSize: 13,
     color: '#94A3B8',
@@ -645,21 +686,22 @@ const styles = StyleSheet.create({
   },
   maadActionsRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 10,
+    gap: 12,
+    marginTop: 14,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
   approveBtn: {
     flex: 2,
-    minHeight: 44, // UI/UX Pro Max
+    minHeight: 48, // Mínimo 48dp de toque ergonômico
     backgroundColor: '#059669',
-    borderRadius: 10,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
+    paddingHorizontal: 10,
   },
   approveBtnText: {
     color: '#FFFFFF',
@@ -668,15 +710,16 @@ const styles = StyleSheet.create({
   },
   rejectBtn: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48, // Mínimo 48dp de toque ergonômico
     backgroundColor: '#FEE2E2',
     borderWidth: 1,
     borderColor: '#FECACA',
-    borderRadius: 10,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
+    paddingHorizontal: 8,
   },
   rejectBtnText: {
     color: '#DC2626',
