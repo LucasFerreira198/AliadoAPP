@@ -31,6 +31,8 @@ export default function AnnouncementsScreen() {
   const isPastor = currentUser?.role === 'pastor' || currentUser?.role === 'admin';
 
   const handlePublish = async () => {
+    if (loading) return; // Trava de duplo clique
+
     if (!title.trim() || !content.trim()) {
       Alert.alert('Aviso', 'Preencha o título e o conteúdo do comunicado.');
       return;
@@ -38,15 +40,15 @@ export default function AnnouncementsScreen() {
 
     setLoading(true);
     try {
-      await createAnnouncement(title, content, isUrgent ? 'urgente' : 'normal');
+      await createAnnouncement(title.trim(), content.trim(), isUrgent ? 'urgente' : 'normal');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Comunicado Publicado!', 'O aviso foi divulgado e a notificação enviada à igreja.');
       setTitle('');
       setContent('');
       setIsUrgent(false);
       setShowNew(false);
-    } catch {
-      Alert.alert('Erro', 'Não foi possível publicar o aviso.');
+    } catch (err: any) {
+      Alert.alert('Erro', err.message || 'Não foi possível publicar o aviso.');
     } finally {
       setLoading(false);
     }
@@ -59,108 +61,107 @@ export default function AnnouncementsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-      <Text style={[styles.title, { color: themeColors.textPrimary }]}>Mural de Avisos Pastorais</Text>
-      <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
-        Comunicados oficiais da liderança pastoral para todos os ministérios da Igreja Metodista Aliado.
-      </Text>
+        <Text style={[styles.title, { color: themeColors.textPrimary }]}>Mural de Avisos Pastorais</Text>
+        <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
+          Comunicados oficiais da liderança pastoral para todos os ministérios da Igreja Metodista Aliado.
+        </Text>
 
-      {isPastor && (
-        <Button
-          title={showNew ? 'Cancelar' : '+ Publicar Novo Comunicado'}
-          onPress={() => setShowNew(!showNew)}
-          variant={showNew ? 'outline' : 'primary'}
-          icon={showNew ? <X size={18} color={Colors.primary.DEFAULT} /> : <Plus size={18} color="#FFFFFF" />}
-          style={{ marginBottom: 16 }}
-        />
-      )}
-
-      {showNew && (
-        <Card style={styles.formCard}>
-          <Text style={[styles.formTitle, { color: themeColors.textPrimary }]}>Novo Comunicado Oficial</Text>
-
-          <Input
-            label="Título do Comunicado *"
-            placeholder="Ex: Reunião Geral de Obreiros e Liderança"
-            value={title}
-            onChangeText={setTitle}
+        {isPastor && (
+          <Button
+            title={showNew ? 'Cancelar' : '+ Publicar Novo Comunicado'}
+            onPress={() => setShowNew(!showNew)}
+            variant={showNew ? 'outline' : 'primary'}
+            icon={showNew ? <X size={18} color={Colors.primary.DEFAULT} /> : <Plus size={18} color="#FFFFFF" />}
+            style={{ marginBottom: 16 }}
           />
+        )}
 
-          <Input
-            label="Mensagem *"
-            placeholder="Escreva a mensagem pastoral detalhada..."
-            value={content}
-            onChangeText={setContent}
-            multiline
-            numberOfLines={4}
-          />
+        {showNew && (
+          <Card style={styles.formCard}>
+            <Text style={[styles.formTitle, { color: themeColors.textPrimary }]}>Novo Comunicado Oficial</Text>
 
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => setIsUrgent(!isUrgent)}
-            style={[
-              styles.urgentCheckRow,
-              { backgroundColor: isUrgent ? themeColors.priority.urgente.bg : themeColors.subtleBg },
-              isUrgent ? { borderColor: themeColors.priority.urgente.text, borderWidth: 1 } : null
-            ]}
-          >
-            <AlertCircle size={18} color={isUrgent ? themeColors.priority.urgente.text : themeColors.textSecondary} />
-            <Text 
+            <Input
+              label="Título do Comunicado *"
+              placeholder="Ex: Reunião Geral de Obreiros e Liderança"
+              value={title}
+              onChangeText={setTitle}
+            />
+
+            <Input
+              label="Mensagem *"
+              placeholder="Escreva a mensagem pastoral detalhada..."
+              value={content}
+              onChangeText={setContent}
+              multiline
+              numberOfLines={4}
+            />
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setIsUrgent(!isUrgent)}
               style={[
-                styles.urgentCheckText, 
-                { color: isUrgent ? themeColors.priority.urgente.text : themeColors.textSecondary },
-                isUrgent ? { fontWeight: '700' } : null
+                styles.urgentCheckRow,
+                { backgroundColor: isUrgent ? themeColors.priority.urgente.bg : themeColors.subtleBg },
+                isUrgent ? { borderColor: themeColors.priority.urgente.text, borderWidth: 1 } : null
               ]}
             >
-              Marcar como Urgente (Push com som prioritário)
-            </Text>
-          </TouchableOpacity>
-
-          <Button
-            title="Divulgar Comunicado com Push"
-            onPress={handlePublish}
-            loading={loading}
-            variant="primary"
-            icon={<Send size={16} color="#FFFFFF" />}
-            style={{ marginTop: 12 }}
-          />
-        </Card>
-      )}
-
-      <View style={styles.list}>
-        {announcements.map(anc => {
-          const isUrgentMsg = anc.priority === 'urgente';
-          return (
-            <Card
-              key={anc.id}
-              accentColor={isUrgentMsg ? themeColors.status.danger : Colors.primary.DEFAULT}
-              style={styles.announcementCard}
-            >
-              <View style={styles.ancHeader}>
-                <Badge
-                  label={isUrgentMsg ? 'URGENTE' : 'COMUNICADO'}
-                  bgColor={isUrgentMsg ? themeColors.priority.urgente.bg : themeColors.priority.baixa.bg}
-                  textColor={isUrgentMsg ? themeColors.priority.urgente.text : themeColors.priority.baixa.text}
-                />
-                <Text style={[styles.ancDate, { color: themeColors.textMuted }]}>
-                  {new Date(anc.created_at).toLocaleDateString('pt-BR', {
-                    day: '2-digit',
-                    month: 'short',
-                  })}
-                </Text>
-              </View>
-
-              <Text style={[styles.ancTitle, { color: themeColors.textPrimary }]}>{anc.title}</Text>
-              <Text style={[styles.ancContent, { color: themeColors.textSecondary }]}>{anc.content}</Text>
-              <Text style={[styles.ancAuthor, { color: themeColors.textMuted, borderTopColor: themeColors.cardBorder }]}>
-                Publicado por: {anc.author_name}
+              <AlertCircle size={18} color={isUrgent ? themeColors.priority.urgente.text : themeColors.textSecondary} />
+              <Text 
+                style={[
+                  styles.urgentCheckText, 
+                  { color: isUrgent ? themeColors.priority.urgente.text : themeColors.textSecondary },
+                  isUrgent ? { fontWeight: '700' } : null
+                ]}
+              >
+                Marcar como Urgente (Push com som prioritário)
               </Text>
-            </Card>
-          );
-        })}
-      </View>
+            </TouchableOpacity>
+
+            <Button
+              title="Divulgar Comunicado com Push"
+              onPress={handlePublish}
+              loading={loading}
+              variant="primary"
+              icon={<Send size={16} color="#FFFFFF" />}
+              style={{ marginTop: 12 }}
+            />
+          </Card>
+        )}
+
+        <View style={styles.list}>
+          {announcements.map(anc => {
+            const isUrgentMsg = anc.priority === 'urgente';
+            return (
+              <Card
+                key={anc.id}
+                accentColor={isUrgentMsg ? themeColors.status.danger : Colors.primary.DEFAULT}
+                style={styles.announcementCard}
+              >
+                <View style={styles.ancHeader}>
+                  <Badge
+                    label={isUrgentMsg ? 'URGENTE' : 'COMUNICADO'}
+                    bgColor={isUrgentMsg ? themeColors.priority.urgente.bg : themeColors.priority.baixa.bg}
+                    textColor={isUrgentMsg ? themeColors.priority.urgente.text : themeColors.priority.baixa.text}
+                  />
+                  <Text style={[styles.ancDate, { color: themeColors.textMuted }]}>
+                    {new Date(anc.created_at).toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: 'short',
+                    })}
+                  </Text>
+                </View>
+
+                <Text style={[styles.ancTitle, { color: themeColors.textPrimary }]}>{anc.title}</Text>
+                <Text style={[styles.ancContent, { color: themeColors.textSecondary }]}>{anc.content}</Text>
+                <Text style={[styles.ancAuthor, { color: themeColors.textMuted }]}>
+                  Publicado por: {anc.author_name}
+                </Text>
+              </Card>
+            );
+          })}
+        </View>
       </ScrollView>
 
-      {/* Barra de Navegação Inferior Ergonômica Fixa */}
       <BottomNavBar activeTab="mural" />
     </View>
   );
@@ -179,17 +180,17 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: '900',
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     marginBottom: 16,
-    lineHeight: 20,
+    lineHeight: 18,
   },
   formCard: {
     marginBottom: 20,
-    borderColor: Colors.primary.DEFAULT,
+    padding: 16,
   },
   formTitle: {
     fontSize: 16,
@@ -202,8 +203,7 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 12,
     borderRadius: 10,
-    marginBottom: 8,
-    minHeight: 44, // UI/UX Pro Max: touch target
+    marginVertical: 10,
   },
   urgentCheckText: {
     fontSize: 13,
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   announcementCard: {
-    marginBottom: 10,
+    padding: 16,
   },
   ancHeader: {
     flexDirection: 'row',
@@ -226,20 +226,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   ancTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
     marginBottom: 6,
-    lineHeight: 22,
   },
   ancContent: {
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 20,
     marginBottom: 10,
   },
   ancAuthor: {
-    fontSize: 12,
-    fontWeight: '600',
-    borderTopWidth: 1,
-    paddingTop: 8,
+    fontSize: 11,
+    fontStyle: 'italic',
   },
 });

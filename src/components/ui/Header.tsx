@@ -1,18 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { 
   Flame, 
   WifiOff, 
-  Users, 
-  ChevronDown, 
-  Check, 
+  User, 
   Sun, 
   Moon, 
   LogOut, 
   ShieldCheck, 
-  Landmark, 
-  Calendar 
+  X,
+  Mail,
+  Phone
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -23,8 +22,6 @@ export const Header: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { 
     currentUser, 
-    switchUser, 
-    profiles, 
     isOffline, 
     offlineQueueCount,
     theme,
@@ -32,11 +29,12 @@ export const Header: React.FC = () => {
     signOut
   } = useApp();
 
-  const [modalVisible, setModalVisible] = useState(false);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
   const themeColors = getThemeColors(theme);
 
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setProfileModalVisible(false);
     await signOut();
     router.replace('/login');
   };
@@ -47,7 +45,7 @@ export const Header: React.FC = () => {
       case 'admin':
         return 'Admin Geral';
       case 'pastor':
-        return 'Pastor';
+        return 'Pastor Titular';
       case 'secretaria':
         return 'Secretária';
       case 'maad':
@@ -75,12 +73,12 @@ export const Header: React.FC = () => {
 
   return (
     <View style={[styles.headerContainer, { paddingTop: Math.max(insets.top, 16) }]}>
-      {/* Banner de Modo Offline Inteligente */}
+      {/* Banner de Modo Offline */}
       {isOffline && (
         <View style={styles.offlineBanner}>
           <WifiOff size={14} color="#FFFFFF" />
           <Text style={styles.offlineText}>
-            Modo Offline ativo {offlineQueueCount > 0 ? `(${offlineQueueCount} pendente(s) de envio)` : ''}
+            Modo Offline ativo {offlineQueueCount > 0 ? `(${offlineQueueCount} pendente(s) de sincronização)` : ''}
           </Text>
         </View>
       )}
@@ -97,7 +95,7 @@ export const Header: React.FC = () => {
           </View>
         </View>
 
-        {/* Botão de Tema + Perfil + Logout */}
+        {/* Ações: Tema + Perfil + Logout */}
         <View style={styles.rightActionsRow}>
           {/* Alternar Tema Claro / Escuro */}
           <TouchableOpacity
@@ -116,12 +114,12 @@ export const Header: React.FC = () => {
             )}
           </TouchableOpacity>
 
-          {/* Perfil & Seletor de Papel */}
+          {/* Perfil Seguro (Abre Detalhes do Usuário Conectado) */}
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => setModalVisible(true)}
+            onPress={() => setProfileModalVisible(true)}
             style={styles.profileBtn}
-            accessibilityLabel="Alterar perfil de usuário"
+            accessibilityLabel="Ver perfil da conta"
           >
             {currentUser?.avatar_url ? (
               <Image source={{ uri: currentUser.avatar_url }} style={styles.avatar} />
@@ -134,12 +132,9 @@ export const Header: React.FC = () => {
               <Text style={styles.userName} numberOfLines={1}>
                 {currentUser?.full_name?.split(' ')[0] || 'Entrar'}
               </Text>
-              <View style={styles.roleTag}>
-                <Text style={[styles.roleText, { color: getRoleColor() }]}>
-                  {getRoleLabel()}
-                </Text>
-                <ChevronDown size={12} color="#94A3B8" />
-              </View>
+              <Text style={[styles.roleText, { color: getRoleColor() }]}>
+                {getRoleLabel()}
+              </Text>
             </View>
           </TouchableOpacity>
 
@@ -155,66 +150,81 @@ export const Header: React.FC = () => {
         </View>
       </View>
 
-      {/* Modal Seletor de Perfil (Simulação & Testes) */}
+      {/* Modal de Informações da Sessão do Usuário Conectado */}
       <Modal
-        visible={modalVisible}
+        visible={profileModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => setProfileModalVisible(false)}
       >
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
-          onPress={() => setModalVisible(false)}
+          onPress={() => setProfileModalVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: themeColors.surface }]}>
+          <View style={[styles.modalContent, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
             <View style={styles.modalHeader}>
-              <Users size={20} color={Colors.primary.DEFAULT} />
-              <Text style={[styles.modalTitle, { color: themeColors.textPrimary }]}>
-                Alternar Visão do Usuário
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ShieldCheck size={20} color={Colors.primary.DEFAULT} />
+                <Text style={[styles.modalTitle, { color: themeColors.textPrimary }]}>
+                  Sessão Autenticada
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setProfileModalVisible(false)}>
+                <X size={20} color={themeColors.textSecondary} />
+              </TouchableOpacity>
             </View>
-            <Text style={[styles.modalSubtitle, { color: themeColors.textSecondary }]}>
-              Selecione o perfil para testar as permissões de cada ministério e liderança:
-            </Text>
 
-            <ScrollView style={{ maxHeight: 380 }}>
-              {profiles.map(p => {
-                const isSelected = p.id === currentUser?.id;
-                return (
-                  <TouchableOpacity
-                    key={p.id}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      switchUser(p.id);
-                      setModalVisible(false);
-                    }}
-                    style={[
-                      styles.userOption, 
-                      { borderColor: themeColors.border },
-                      isSelected ? styles.userOptionSelected : null
-                    ]}
-                  >
-                    <Image source={{ uri: p.avatar_url }} style={styles.optionAvatar} />
-                    <View style={styles.optionInfo}>
-                      <Text style={[styles.optionName, { color: themeColors.textPrimary }]}>{p.full_name}</Text>
-                      <Text style={[styles.optionRole, { color: themeColors.textSecondary }]}>
-                        {p.role === 'admin' 
-                          ? 'Administrador Geral' 
-                          : p.role === 'pastor' 
-                          ? 'Pastor Titular' 
-                          : p.role === 'secretaria' 
-                          ? 'Secretária da Igreja' 
-                          : p.role === 'maad' 
-                          ? 'MAAD (Contabilidade)' 
-                          : `${p.ministry_name || 'Líder'}`}
-                      </Text>
+            {currentUser && (
+              <View style={styles.profileDetailsBox}>
+                <View style={styles.profileCenterRow}>
+                  {currentUser.avatar_url ? (
+                    <Image source={{ uri: currentUser.avatar_url }} style={styles.modalAvatar} />
+                  ) : (
+                    <View style={styles.modalAvatarFallback}>
+                      <User size={32} color="#FFFFFF" />
                     </View>
-                    {isSelected && <Check size={20} color={Colors.primary.DEFAULT} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                  )}
+                  <Text style={[styles.modalUserName, { color: themeColors.textPrimary }]}>
+                    {currentUser.full_name}
+                  </Text>
+                  <Text style={[styles.modalRoleBadge, { color: getRoleColor() }]}>
+                    {currentUser.role.toUpperCase()}
+                  </Text>
+                </View>
+
+                {currentUser.ministry_name && (
+                  <Text style={[styles.modalMinistry, { color: themeColors.textSecondary }]}>
+                    {currentUser.ministry_name}
+                  </Text>
+                )}
+
+                <View style={[styles.detailItem, { borderTopColor: themeColors.border }]}>
+                  <Mail size={16} color={themeColors.textSecondary} />
+                  <Text style={[styles.detailText, { color: themeColors.textSecondary }]}>
+                    {currentUser.email}
+                  </Text>
+                </View>
+
+                {currentUser.phone && (
+                  <View style={styles.detailItem}>
+                    <Phone size={16} color={themeColors.textSecondary} />
+                    <Text style={[styles.detailText, { color: themeColors.textSecondary }]}>
+                      {currentUser.phone}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleLogout}
+              style={styles.logoutBtn}
+            >
+              <LogOut size={16} color="#DC2626" />
+              <Text style={styles.logoutBtnText}>Encerrar Sessão</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -280,7 +290,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   iconActionBtn: {
-    width: 44, // UI/UX Pro Max touch area
+    width: 44,
     height: 44,
     borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.08)',
@@ -293,11 +303,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 24,
     paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
-    gap: 6,
-    minHeight: 44, // UI/UX Pro Max
+    gap: 8,
+    minHeight: 44,
   },
   avatar: {
     width: 28,
@@ -318,17 +328,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   profileInfo: {
-    maxWidth: 85,
+    maxWidth: 95,
   },
   userName: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
-  },
-  roleTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
   },
   roleText: {
     fontSize: 10,
@@ -343,49 +348,81 @@ const styles = StyleSheet.create({
   modalContent: {
     borderRadius: 20,
     padding: 20,
-    maxHeight: '85%',
+    borderWidth: 1,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
   modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  profileDetailsBox: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  profileCenterRow: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginBottom: 8,
+  },
+  modalAvatarFallback: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  modalUserName: {
     fontSize: 18,
     fontWeight: '800',
   },
-  modalSubtitle: {
+  modalRoleBadge: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  modalMinistry: {
     fontSize: 13,
     marginBottom: 16,
   },
-  userOption: {
+  detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    gap: 8,
+    width: '100%',
+    paddingVertical: 8,
+  },
+  detailText: {
+    fontSize: 13,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+    paddingVertical: 12,
     borderRadius: 12,
-    borderWidth: 1.5,
-    marginBottom: 8,
-    gap: 12,
-  },
-  userOptionSelected: {
-    borderColor: Colors.primary.DEFAULT,
     backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    minHeight: 46,
   },
-  optionAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  optionInfo: {
-    flex: 1,
-  },
-  optionName: {
-    fontSize: 15,
+  logoutBtnText: {
+    color: '#DC2626',
+    fontSize: 14,
     fontWeight: '700',
-  },
-  optionRole: {
-    fontSize: 12,
-    marginTop: 2,
   },
 });

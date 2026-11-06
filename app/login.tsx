@@ -10,7 +10,7 @@ import {
   Platform 
 } from 'react-native';
 import { router } from 'expo-router';
-import { Flame, Lock, Mail, Sun, Moon, ArrowRight, ShieldCheck, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react-native';
+import { Flame, Lock, Mail, Sun, Moon, ArrowRight, HelpCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../src/context/AppContext';
 import { Input } from '../src/components/ui/Input';
@@ -25,7 +25,6 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showDemoAccounts, setShowDemoAccounts] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -47,25 +46,7 @@ export default function LoginScreen() {
         Alert.alert('Não foi possível entrar', res.error || 'E-mail ou senha incorretos.');
       }
     } catch {
-      Alert.alert('Erro no Sistema', 'Ocorreu uma falha ao autenticar. Tente novamente em instantes.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSelectDemoAccount = async (demoEmail: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setEmail(demoEmail);
-    setPassword('123456');
-    setLoading(true);
-    try {
-      const res = await signIn(demoEmail, '123456');
-      if (res.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace('/');
-      } else {
-        Alert.alert('Erro', res.error || 'Falha ao autenticar com a conta demo.');
-      }
+      Alert.alert('Erro no Sistema', 'Ocorreu uma falha ao autenticar. Verifique sua conexão e tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -100,7 +81,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Logo Cruz e Chama Humanizada */}
+        {/* Logo Cruz e Chama */}
         <View style={styles.logoSection}>
           <View style={[styles.flameCircle, { backgroundColor: Colors.primary.DEFAULT }]}>
             <Flame size={42} color="#FFFFFF" fill="#F59E0B" />
@@ -113,10 +94,10 @@ export default function LoginScreen() {
           </Text>
         </View>
 
-        {/* Card do Formulário Unificado */}
+        {/* Card do Formulário de Acesso */}
         <View style={[styles.formCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
           <Text style={[styles.cardHeaderTitle, { color: themeColors.textPrimary }]}>
-            Identificação do Membro
+            Identificação de Acesso
           </Text>
           <Text style={[styles.cardHeaderSub, { color: themeColors.textSecondary }]}>
             Digite suas credenciais institucionais para acessar seus ministérios.
@@ -124,7 +105,7 @@ export default function LoginScreen() {
 
           <Input
             label="E-mail Institucional ou Pessoal *"
-            placeholder="pastor@metodistaaliado.com.br"
+            placeholder="usuario@metodistaaliado.com.br"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -149,7 +130,7 @@ export default function LoginScreen() {
             style={{ marginTop: 8 }}
           />
 
-          {/* Ajuda Pastoral e Recuperação */}
+          {/* Ajuda Pastoral e Suporte */}
           <TouchableOpacity 
             activeOpacity={0.7}
             style={styles.helpLink}
@@ -165,77 +146,6 @@ export default function LoginScreen() {
               Primeiro acesso ou esqueceu a senha?
             </Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Seção Discreta de Homologação / Teste */}
-        <View style={styles.devSection}>
-          <TouchableOpacity 
-            activeOpacity={0.7}
-            style={styles.devToggle}
-            onPress={() => setShowDemoAccounts(!showDemoAccounts)}
-          >
-            <Text style={[styles.devToggleText, { color: themeColors.textSecondary }]}>
-              Ambiente de Demonstração / Homologação
-            </Text>
-            {showDemoAccounts ? (
-              <ChevronUp size={16} color={themeColors.textSecondary} />
-            ) : (
-              <ChevronDown size={16} color={themeColors.textSecondary} />
-            )}
-          </TouchableOpacity>
-
-          {showDemoAccounts && (
-            <View style={[styles.demoBox, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
-              <Text style={[styles.demoBoxTitle, { color: themeColors.textSecondary }]}>
-                Toque em uma conta para preenchimento imediato:
-              </Text>
-              <View style={styles.demoGrid}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => handleSelectDemoAccount('pastor@metodistaaliado.com.br')}
-                  style={[styles.demoBtn, { borderColor: themeColors.border }]}
-                >
-                  <Text style={[styles.demoBtnText, { color: themeColors.textPrimary }]}>
-                    👔 Pastor Carlos
-                  </Text>
-                  <Text style={styles.demoBadgeRole}>Administrador / Pastoral</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => handleSelectDemoAccount('maad@metodistaaliado.com.br')}
-                  style={[styles.demoBtn, { borderColor: themeColors.border }]}
-                >
-                  <Text style={[styles.demoBtnText, { color: '#059669', fontWeight: '800' }]}>
-                    📊 Equipe MAAD
-                  </Text>
-                  <Text style={styles.demoBadgeRole}>Tesouraria / Finanças</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => handleSelectDemoAccount('mariana.louvor@metodistaaliado.com.br')}
-                  style={[styles.demoBtn, { borderColor: themeColors.border }]}
-                >
-                  <Text style={[styles.demoBtnText, { color: themeColors.textPrimary }]}>
-                    🎵 Mariana Souza
-                  </Text>
-                  <Text style={styles.demoBadgeRole}>Líder Ministério Louvor</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => handleSelectDemoAccount('lucas.jovens@metodistaaliado.com.br')}
-                  style={[styles.demoBtn, { borderColor: themeColors.border }]}
-                >
-                  <Text style={[styles.demoBtnText, { color: themeColors.textPrimary }]}>
-                    🔥 Lucas Ferreira
-                  </Text>
-                  <Text style={styles.demoBadgeRole}>Líder Ministério Jovens</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -336,55 +246,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     textDecorationLine: 'underline',
-  },
-  devSection: {
-    marginTop: 28,
-    alignItems: 'center',
-  },
-  devToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  devToggleText: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  demoBox: {
-    width: '100%',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    marginTop: 10,
-  },
-  demoBoxTitle: {
-    fontSize: 12,
-    marginBottom: 12,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  demoGrid: {
-    gap: 8,
-  },
-  demoBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  demoBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  demoBadgeRole: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
   },
 });

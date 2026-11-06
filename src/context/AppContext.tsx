@@ -37,16 +37,11 @@ import {
   UUIDS
 } from '../services/mockData';
 import { scheduleLocalNotification } from '../services/notifications';
-import { OfflineSyncService } from '../services/offlineSync';
+import { OfflineSyncService, QueuedAction } from '../services/offlineSync';
 import { SecureStorageService } from '../services/secureStorage';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
-// Gerador determinístico de UUID v4 para compatibilidade total com o Postgres/Supabase
-function generateUUID(prefixNumber = '0000'): string {
-  const ts = Date.now().toString(16).padStart(12, '0');
-  const rnd = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, '0');
-  return `00000000-${prefixNumber}-4000-8000-${rnd}${ts}`;
-}
+import { generateUUID } from '../utils/uuid';
 
 interface AppContextType {
   // Autenticação & Perfil
@@ -54,7 +49,6 @@ interface AppContextType {
   isAuthenticated: boolean;
   signIn: (email: string, password?: string, role?: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
-  switchUser: (userId: string) => void;
   profiles: Profile[];
 
   // Painel do Administrador (Criação e Gestão de Contas)
@@ -83,6 +77,7 @@ interface AppContextType {
   isOffline: boolean;
   setIsOffline: (value: boolean) => void;
   offlineQueueCount: number;
+  syncOfflineQueue: () => Promise<void>;
 
   // Ações de Metas (Pastor e Líder)
   createGoal: (data: {
@@ -187,6 +182,7 @@ const STORAGE_KEYS = {
   SCHEDULES: '@aliado_schedules',
   EVENTS: '@aliado_events',
   RECURRING_SCHEDULES: '@aliado_recurring_schedules',
+  ANNOUNCEMENTS: '@aliado_announcements',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -205,16 +201,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isOffline, setIsOffline] = useState<boolean>(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState<number>(0);
 
-  // Carregar dados salvos no AsyncStorage
+  // Carregar dados salvos no AsyncStorage / Keystore
   useEffect(() => {
     (async () => {
       try {
         const savedTheme = await AsyncStorage.getItem(STORAGE_KEYS.THEME);
         if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme);
 
-        // Carrega usuário da sessão criptografada segura
-        const savedUser = (await SecureStorageService.getItem(STORAGE_KEYS.USER)) || 
-                          (await AsyncStorage.getItem(STORAGE_KEYS.USER));
+        // Carrega usuário da sessão segura
+        const savedUser = await SecureStorageService.getItem(STORAGE_KEYS.USER);
         if (savedUser) setCurrentUser(JSON.parse(savedUser));
 
         const savedProfiles = await AsyncStorage.getItem(STORAGE_KEYS.PROFILES);
@@ -229,16 +224,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const savedEvents = await AsyncStorage.getItem(STORAGE_KEYS.EVENTS);
         if (savedEvents) setEvents(JSON.parse(savedEvents));
 
+        const savedRecurring = await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_SCHEDULES);
+        if (savedRecurring) setRecurringSchedules(JSON.parse(savedRecurring));
+
         const savedBudgets = await AsyncStorage.getItem(STORAGE_KEYS.BUDGETS);
         if (savedBudgets) setBudgets(JSON.parse(savedBudgets));
 
         const savedCash = await AsyncStorage.getItem(STORAGE_KEYS.CASH_TRANSACTIONS);
         if (savedCash) setCashTransactions(JSON.parse(savedCash));
 
+        const savedExpenses = await AsyncStorage.getItem(STORAGE_KEYS.EXPENSES);
+        if (savedExpenses) setExpenses(JSON.parse(savedExpenses));
+
+        const savedAnnouncements = await AsyncStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
+        if (savedAnnouncements) setAnnouncements(JSON.parse(savedAnnouncements));
+
         const count = await OfflineSyncService.count();
         setOfflineQueueCount(count);
+
+        // Tenta processar fila offline ao inicializar se houver conexão
+        if (count > 0 && isSupabaseConfigured()) {
+          await syncOfflineQueue();
+        }
       } catch (err) {
-        console.log('Erro ao carregar storage:', err);
+        console.error('[AppProvider] Erro ao carregar armazenamento local:', err);
       }
     })();
   }, []);
@@ -250,12 +259,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   /**
+   * Processamento e drenagem da fila offline para o Supabase
+   */
+  const syncOfflineQueue = async () => {
+    if (!isSupabaseConfigured()) return;
+
+    try {
+      const result = await OfflineSyncService.flushQueue(async (action: QueuedAction) => {
+        if (action.type === 'submit_report') {
+          const { assignmentId, notes, mediaUrls, authorId, reportId } = action.payload;
+          const { error: repErr } = await supabase.from('reports').insert({
+            id: reportId || generateUUID('0013'),
+            assignment_id: assignmentId,
+            author_id: authorId,
+            notes,
+            status: 'enviado',
+          });
+
+          if (repErr) {
+            console.warn('[OfflineSync] Falha ao sincronizar relatório:', repErr.message);
+            return false;
+          }
+
+          if (mediaUrls && mediaUrls.length > 0) {
+            for (const url of mediaUrls) {
+              await supabase.from('report_media').insert({
+                id: generateUUID('0014'),
+                report_id: reportId,
+                media_type: url.includes('.mp4') || url.includes('.mov') ? 'video' : 'image',
+                file_url: url,
+              });
+            }
+          }
+
+          await supabase.from('goal_assignments').update({
+            status: 'concluida',
+            completed_at: new Date().toISOString(),
+          }).eq('id', assignmentId);
+
+          return true;
+        }
+
+        if (action.type === 'submit_expense') {
+          const { id, ministryId, description, amount, receiptUrl, reportedBy } = action.payload;
+          const { error: expErr } = await supabase.from('ministry_expenses').insert({
+            id: id || generateUUID('0011'),
+            ministry_id: ministryId,
+            reported_by: reportedBy,
+            description,
+            amount,
+            receipt_url: receiptUrl,
+            status: 'pendente_aprovacao',
+          });
+          return !expErr;
+        }
+
+        return true;
+      });
+
+      const updatedCount = await OfflineSyncService.count();
+      setOfflineQueueCount(updatedCount);
+      console.log(`[OfflineSync] Drenagem concluída. Processados: ${result.processed}, Pendentes: ${updatedCount}`);
+    } catch (err) {
+      console.error('[OfflineSync] Erro na execução da sincronização:', err);
+    }
+  };
+
+  /**
    * Autenticação Segura com Validação Estrita de Senha e Proteção contra Privilege Escalation
    */
   const signIn = async (
     email: string, 
-    password?: string, 
-    role?: string
+    password?: string
   ): Promise<{ success: boolean; error?: string }> => {
     if (!email || !email.trim()) {
       return { success: false, error: 'O e-mail de acesso é obrigatório.' };
@@ -279,34 +354,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         if (data?.user) {
-          const { data: profileData } = await supabase
+          const { data: profileData, error: profileErr } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', data.user.id)
             .single();
 
-          if (profileData) {
-            if (profileData.is_active === false) {
-              await supabase.auth.signOut();
-              return { success: false, error: 'Sua conta está desativada. Procure o Administrador da igreja.' };
-            }
-            setCurrentUser(profileData);
-            await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(profileData));
-            return { success: true };
+          if (profileErr || !profileData) {
+            return { success: false, error: 'Perfil não localizado no banco institucional.' };
           }
+
+          if (profileData.is_active === false) {
+            await supabase.auth.signOut();
+            return { success: false, error: 'Sua conta está desativada. Procure o Administrador da igreja.' };
+          }
+
+          setCurrentUser(profileData);
+          await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(profileData));
+          return { success: true };
         }
       } catch (err: any) {
-        console.warn('Falha na autenticação remota, recorrendo ao modo seguro local:', err);
+        console.error('[Auth] Falha crítica de autenticação no Supabase:', err);
+        return { success: false, error: 'Não foi possível conectar ao servidor. Verifique sua conexão.' };
       }
     }
 
-    // 2. Modo Local / Demonstração com validação rigorosa de credenciais
+    // 2. Modo Local / Desenvolvimento (Apenas quando o Supabase não estiver configurado)
     const found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
 
     if (!found) {
       return { 
         success: false, 
-        error: 'E-mail não encontrado. Solicite seu cadastro ao Administrador da igreja.' 
+        error: 'E-mail não cadastrado. Procure a secretaria ou o Administrador da igreja.' 
       };
     }
 
@@ -317,9 +396,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Validação estrita da senha (elimina o bypass anterior)
-    const expectedPassword = DEMO_CREDENTIALS[cleanEmail] || '123456';
-    if (password.trim() !== expectedPassword) {
+    const expectedPassword = DEMO_CREDENTIALS[cleanEmail];
+    if (!expectedPassword || password.trim() !== expectedPassword) {
       return { success: false, error: 'Senha incorreta. Tente novamente.' };
     }
 
@@ -331,22 +409,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const signOut = async () => {
     setCurrentUser(null);
     await SecureStorageService.deleteItem(STORAGE_KEYS.USER);
-    await AsyncStorage.removeItem(STORAGE_KEYS.USER);
     if (isSupabaseConfigured()) {
-      await supabase.auth.signOut();
-    }
-  };
-
-  const switchUser = async (userId: string) => {
-    const user = profiles.find(p => p.id === userId);
-    if (user) {
-      setCurrentUser(user);
-      await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('[Auth] Erro ao desconectar do Supabase:', err);
+      }
     }
   };
 
   // ==========================================
-  // ADMINISTRADOR: CRIAÇÃO E GESTÃO DE CONTAS
+  // ADMINISTRADOR: CRIAÇÃO E GESTÃO DE CONTAS (RBAC GUARD)
   // ==========================================
   const createAccount = async (data: {
     full_name: string;
@@ -356,6 +429,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ministry_id?: string;
     birth_date?: string;
   }) => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Apenas o Administrador Geral possui autorização para criar contas.');
+    }
+
     const ministry = ministries.find(m => m.id === data.ministry_id);
     const newProfile: Profile = {
       id: generateUUID('0007'),
@@ -375,10 +452,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updated));
 
     if (isSupabaseConfigured()) {
-      try {
-        await supabase.from('profiles').insert(newProfile);
-      } catch (err) {
-        console.warn('Erro ao sincronizar perfil no Supabase:', err);
+      const { error } = await supabase.from('profiles').insert({
+        id: newProfile.id,
+        full_name: newProfile.full_name,
+        email: newProfile.email,
+        phone: newProfile.phone,
+        role: newProfile.role,
+        birth_date: newProfile.birth_date,
+        is_active: newProfile.is_active,
+        avatar_url: newProfile.avatar_url,
+      });
+
+      if (error) {
+        console.error('[Admin] Erro ao sincronizar novo perfil no Supabase:', error.message);
       }
     }
 
@@ -389,17 +475,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleAccountStatus = async (userId: string) => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Apenas o Administrador Geral pode suspender ou reativar contas.');
+    }
+
+    if (userId === currentUser?.id) {
+      throw new Error('Não é permitido suspender a própria conta de administrador.');
+    }
+
     const updated = profiles.map(p => p.id === userId ? { ...p, is_active: !p.is_active } : p);
     setProfiles(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updated));
 
     if (isSupabaseConfigured()) {
-      const user = updated.find(p => p.id === userId);
-      if (user) {
-        try {
-          await supabase.from('profiles').update({ is_active: user.is_active }).eq('id', userId);
-        } catch (err) {
-          console.warn('Erro ao atualizar status no Supabase:', err);
+      const target = updated.find(p => p.id === userId);
+      if (target) {
+        const { error } = await supabase.from('profiles').update({ is_active: target.is_active }).eq('id', userId);
+        if (error) {
+          console.error('[Admin] Erro ao atualizar status no Supabase:', error.message);
         }
       }
     }
@@ -418,7 +511,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const ministry = ministries.find(m => m.id === data.ministryId);
     const scheduleId = generateUUID('0003');
 
-    const members: ScheduleMember[] = data.members.map((m, idx) => {
+    const members: ScheduleMember[] = data.members.map((m) => {
       const matchedUser = profiles.find(p => p.full_name.toLowerCase() === m.user_name.toLowerCase());
       return {
         id: generateUUID('0008'),
@@ -446,6 +539,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSchedules(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(updated));
 
+    if (isSupabaseConfigured()) {
+      const { error: schErr } = await supabase.from('schedules').insert({
+        id: newSchedule.id,
+        ministry_id: newSchedule.ministry_id,
+        title: newSchedule.title,
+        event_date: newSchedule.event_date,
+        notes: newSchedule.notes,
+        created_by: newSchedule.created_by,
+      });
+
+      if (!schErr && members.length > 0) {
+        const membersData = members.map(m => ({
+          id: m.id,
+          schedule_id: m.schedule_id,
+          user_id: m.user_id,
+          role_in_service: m.role_in_service,
+          status: m.status,
+        }));
+        await supabase.from('schedule_members').insert(membersData);
+      }
+    }
+
     await scheduleLocalNotification(
       'Nova Escala Publicada!',
       `${ministry?.name}: ${data.title} foi cadastrada pelo líder.`
@@ -456,12 +571,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated = schedules.map(s => s.id === scheduleId ? { ...s, ...data } : s);
     setSchedules(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('schedules').update({
+        title: data.title,
+        event_date: data.event_date,
+        notes: data.notes,
+      }).eq('id', scheduleId);
+    }
   };
 
   const deleteSchedule = async (scheduleId: string) => {
     const updated = schedules.filter(s => s.id !== scheduleId);
     setSchedules(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('schedules').delete().eq('id', scheduleId);
+    }
   };
 
   const confirmScheduleAttendance = async (scheduleId: string, memberId: string) => {
@@ -476,6 +603,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setSchedules(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('schedule_members').update({ status: 'confirmado' }).eq('id', memberId);
+    }
   };
 
   const requestScheduleSwap = async (scheduleId: string, memberId: string, reason: string) => {
@@ -490,6 +621,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setSchedules(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('schedule_members').update({
+        status: 'solicitou_troca',
+        swap_reason: reason,
+      }).eq('id', memberId);
+    }
   };
 
   // ==========================================
@@ -512,6 +650,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated = [...recurringSchedules, newRec];
     setRecurringSchedules(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.RECURRING_SCHEDULES, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('recurring_schedules').insert(newRec);
+    }
 
     await scheduleLocalNotification(
       'Culto Fixo Adicionado ao Calendário! ⛪',
@@ -540,20 +682,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updated));
 
     if (isSupabaseConfigured()) {
-      try {
-        await supabase.from('church_events').insert({
-          id: newEv.id,
-          title: newEv.title,
-          description: newEv.description,
-          event_date: newEv.event_date,
-          start_time: newEv.start_time,
-          end_time: newEv.end_time,
-          location: newEv.location,
-          event_type: newEv.event_type,
-        });
-      } catch (err) {
-        console.warn('Erro ao sincronizar evento no Supabase:', err);
-      }
+      await supabase.from('church_events').insert({
+        id: newEv.id,
+        title: newEv.title,
+        description: newEv.description,
+        event_date: newEv.event_date,
+        start_time: newEv.start_time,
+        end_time: newEv.end_time,
+        location: newEv.location,
+        event_type: newEv.event_type,
+        created_by: newEv.created_by,
+      });
     }
 
     await scheduleLocalNotification(
@@ -571,6 +710,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setEvents(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updated));
 
+    if (isSupabaseConfigured()) {
+      await supabase.from('church_events').update({
+        is_cancelled: true,
+        cancelled_reason: reason,
+      }).eq('id', eventId);
+    }
+
     await scheduleLocalNotification(
       'Aviso de Cancelamento de Culto / Evento ⚠️',
       `O culto/evento agendado foi cancelado: "${reason}".`
@@ -585,6 +731,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } : e);
     setEvents(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('church_events').update({
+        is_cancelled: false,
+        cancelled_reason: null,
+      }).eq('id', eventId);
+    }
   };
 
   // ==========================================
@@ -623,17 +776,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await AsyncStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(updatedGoals));
 
     if (isSupabaseConfigured()) {
-      try {
-        await supabase.from('goals').insert({
-          id: newGoal.id,
-          created_by: newGoal.created_by,
-          title: newGoal.title,
-          description: newGoal.description,
-          priority: newGoal.priority,
-          due_date: newGoal.due_date,
-        });
-      } catch (err) {
-        console.warn('Erro ao sincronizar meta no Supabase:', err);
+      const { error: gErr } = await supabase.from('goals').insert({
+        id: newGoal.id,
+        created_by: newGoal.created_by,
+        title: newGoal.title,
+        description: newGoal.description,
+        priority: newGoal.priority,
+        due_date: newGoal.due_date,
+      });
+
+      if (!gErr) {
+        const asgData = newAssignments.map(a => ({
+          id: a.id,
+          goal_id: a.goal_id,
+          ministry_id: a.ministry_id,
+          status: a.status,
+          assigned_at: a.assigned_at,
+        }));
+        await supabase.from('goal_assignments').insert(asgData);
       }
     }
 
@@ -650,35 +810,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const submitReport = async (assignmentId: string, notes: string, mediaUrls: string[]) => {
-    if (isOffline) {
-      await OfflineSyncService.enqueue({
-        type: 'submit_report',
-        payload: { assignmentId, notes, mediaUrls, authorId: currentUser?.id },
-      });
-      const count = await OfflineSyncService.count();
-      setOfflineQueueCount(count);
-      return;
-    }
+    const reportId = generateUUID('0013');
 
+    const newReportMedia = mediaUrls.map((url) => ({
+      id: generateUUID('0014'),
+      report_id: reportId,
+      media_type: (url.includes('.mp4') || url.includes('.mov') ? 'video' : 'image') as 'image' | 'video',
+      file_url: url,
+    }));
+
+    const newReport: Report = {
+      id: reportId,
+      assignment_id: assignmentId,
+      author_id: currentUser?.id || UUIDS.U_LIDER_LOUVOR,
+      author_name: currentUser?.full_name || 'Líder',
+      notes,
+      status: 'enviado',
+      created_at: new Date().toISOString(),
+      media: newReportMedia,
+    };
+
+    // Atualiza estado local imediatamente (otimista)
     const updatedGoals = goals.map(goal => {
       if (!goal.assignments) return goal;
       const updatedAssignments = goal.assignments.map(asg => {
         if (asg.id === assignmentId) {
-          const newReport: Report = {
-            id: 'rep-' + Date.now(),
-            assignment_id: assignmentId,
-            author_id: currentUser?.id || 'u-lider',
-            author_name: currentUser?.full_name || 'Líder',
-            notes,
-            status: 'enviado',
-            created_at: new Date().toISOString(),
-            media: mediaUrls.map((url, index) => ({
-              id: 'med-' + Date.now() + index,
-              report_id: 'rep-' + Date.now(),
-              media_type: url.includes('.mp4') || url.includes('.mov') ? 'video' : 'image',
-              file_url: url,
-            })),
-          };
           return {
             ...asg,
             status: 'concluida' as const,
@@ -694,14 +850,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setGoals(updatedGoals);
     await AsyncStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(updatedGoals));
 
+    if (isOffline) {
+      await OfflineSyncService.enqueue({
+        type: 'submit_report',
+        payload: { 
+          assignmentId, 
+          notes, 
+          mediaUrls, 
+          authorId: currentUser?.id || UUIDS.U_LIDER_LOUVOR,
+          reportId 
+        },
+      });
+      const count = await OfflineSyncService.count();
+      setOfflineQueueCount(count);
+      return;
+    }
+
+    if (isSupabaseConfigured()) {
+      const { error: repErr } = await supabase.from('reports').insert({
+        id: newReport.id,
+        assignment_id: newReport.assignment_id,
+        author_id: newReport.author_id,
+        notes: newReport.notes,
+        status: newReport.status,
+      });
+
+      if (!repErr && newReportMedia.length > 0) {
+        await supabase.from('report_media').insert(newReportMedia);
+      }
+
+      await supabase.from('goal_assignments').update({
+        status: 'concluida',
+        completed_at: new Date().toISOString(),
+      }).eq('id', assignmentId);
+    }
+
     await scheduleLocalNotification(
       'Meta Concluída! 🚀',
-      `${currentUser?.full_name} (${currentUser?.ministry_name}) finalizou a meta e enviou o relatório com mídias para aprovação.`,
+      `${currentUser?.full_name} (${currentUser?.ministry_name || 'Ministério'}) finalizou a meta e enviou o relatório para aprovação.`,
       { assignmentId }
     );
   };
 
   const approveReport = async (assignmentId: string, pastoralFeedback?: string) => {
+    if (currentUser?.role !== 'pastor' && currentUser?.role !== 'admin') {
+      throw new Error('Apenas o Pastor Titular possui autorização para aprovar relatórios.');
+    }
+
     const updatedGoals = goals.map(goal => {
       if (!goal.assignments) return goal;
       const updatedAssignments = goal.assignments.map(asg => {
@@ -724,24 +919,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setGoals(updatedGoals);
     await AsyncStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(updatedGoals));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('reports').update({
+        status: 'aprovado',
+        pastoral_feedback: pastoralFeedback || 'Aprovado com louvor pelo Pastor Carlos.',
+      }).eq('assignment_id', assignmentId);
+    }
   };
 
   const addGoalComment = async (assignmentId: string, message: string, isDoubt: boolean) => {
+    const commentId = generateUUID('0015');
+    const newComment: GoalComment = {
+      id: commentId,
+      assignment_id: assignmentId,
+      user_id: currentUser?.id || UUIDS.U_LIDER_LOUVOR,
+      user_name: currentUser?.full_name || 'Líder',
+      user_role: currentUser?.role || 'leader',
+      message,
+      is_doubt: isDoubt,
+      resolved: false,
+      created_at: new Date().toISOString(),
+    };
+
     const updatedGoals = goals.map(goal => {
       if (!goal.assignments) return goal;
       const updatedAssignments = goal.assignments.map(asg => {
         if (asg.id === assignmentId) {
-          const newComment: GoalComment = {
-            id: 'cmt-' + Date.now(),
-            assignment_id: assignmentId,
-            user_id: currentUser?.id || 'u-lider',
-            user_name: currentUser?.full_name || 'Líder',
-            user_role: currentUser?.role || 'leader',
-            message,
-            is_doubt: isDoubt,
-            resolved: false,
-            created_at: new Date().toISOString(),
-          };
           return {
             ...asg,
             status: isDoubt ? ('duvida' as const) : asg.status,
@@ -755,6 +959,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setGoals(updatedGoals);
     await AsyncStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(updatedGoals));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('goal_comments').insert({
+        id: newComment.id,
+        assignment_id: newComment.assignment_id,
+        user_id: newComment.user_id,
+        message: newComment.message,
+        is_doubt: newComment.is_doubt,
+        resolved: newComment.resolved,
+      });
+
+      if (isDoubt) {
+        await supabase.from('goal_assignments').update({ status: 'duvida' }).eq('id', assignmentId);
+      }
+    }
 
     if (isDoubt) {
       await scheduleLocalNotification(
@@ -794,18 +1013,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(updated));
 
     if (isSupabaseConfigured()) {
-      try {
-        await supabase.from('budgets').insert({
-          id: newBudget.id,
-          ministry_id: newBudget.ministry_id,
-          requested_by: newBudget.requested_by,
-          title: newBudget.title,
-          description: newBudget.description,
-          amount: newBudget.amount,
-          status: newBudget.status,
-        });
-      } catch (err) {
-        console.warn('Erro ao sincronizar orçamento com Supabase:', err);
+      const { error } = await supabase.from('budgets').insert({
+        id: newBudget.id,
+        ministry_id: newBudget.ministry_id,
+        requested_by: newBudget.requested_by,
+        title: newBudget.title,
+        description: newBudget.description,
+        amount: newBudget.amount,
+        status: newBudget.status,
+      });
+
+      if (error) {
+        console.error('[Budget] Erro ao sincronizar orçamento no Supabase:', error.message);
       }
     }
 
@@ -820,13 +1039,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     action: 'encaminhar_maad' | 'rejeitar', 
     notes?: string
   ) => {
+    if (currentUser?.role !== 'pastor' && currentUser?.role !== 'admin') {
+      throw new Error('Apenas o Pastor Titular pode encaminhar ou rejeitar orçamentos na triagem.');
+    }
+
+    const nextStatus: BudgetStatus = action === 'encaminhar_maad' ? 'encaminhado_maad' : 'rejeitado_pastor';
+    const pastoralNotes = notes || (action === 'encaminhar_maad' ? 'Aprovado pelo Pastor. Encaminhado à equipe do MAAD para liberação contábil.' : 'Não aprovado pelo Pastor.');
+
     const updated = budgets.map(b => {
       if (b.id === budgetId) {
-        const nextStatus: BudgetStatus = action === 'encaminhar_maad' ? 'encaminhado_maad' : 'rejeitado_pastor';
         return {
           ...b,
           status: nextStatus,
-          pastoral_notes: notes || (action === 'encaminhar_maad' ? 'Aprovado pelo Pastor. Encaminhado à equipe do MAAD para liberação contábil.' : 'Não aprovado pelo Pastor.'),
+          pastoral_notes: pastoralNotes,
           updated_at: new Date().toISOString(),
         };
       }
@@ -835,6 +1060,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setBudgets(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('budgets').update({
+        status: nextStatus,
+        pastoral_notes: pastoralNotes,
+        updated_at: new Date().toISOString(),
+      }).eq('id', budgetId);
+    }
 
     if (action === 'encaminhar_maad') {
       await scheduleLocalNotification(
@@ -849,16 +1082,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     action: 'aprovar' | 'rejeitar', 
     notes?: string
   ) => {
+    if (currentUser?.role !== 'maad' && currentUser?.role !== 'pastor' && currentUser?.role !== 'admin') {
+      throw new Error('Apenas o MAAD, Tesouraria e Pastoral possuem autorização para aprovação contábil.');
+    }
+
     let approvedBudget: Budget | undefined;
+    const previousBudgets = [...budgets];
+    const nextStatus: BudgetStatus = action === 'aprovar' ? 'aprovado_maad' : 'rejeitado_maad';
+    const maadNotes = notes || (action === 'aprovar' ? 'Orçamento auditado e aprovado pelo MAAD. Verba liberada.' : 'Orçamento indeferido pelo MAAD.');
 
     const updated = budgets.map(b => {
       if (b.id === budgetId) {
         approvedBudget = b;
-        const nextStatus: BudgetStatus = action === 'aprovar' ? 'aprovado_maad' : 'rejeitado_maad';
         return {
           ...b,
           status: nextStatus,
-          maad_notes: notes || (action === 'aprovar' ? 'Orçamento auditado e aprovado pelo MAAD. Verba liberada.' : 'Orçamento indeferido pelo MAAD por indisponibilidade financeira.'),
+          maad_notes: maadNotes,
           updated_at: new Date().toISOString(),
         };
       }
@@ -868,26 +1107,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBudgets(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(updated));
 
-    if (action === 'aprovar' && approvedBudget) {
-      await addCashTransaction({
-        type: 'saida',
-        category: 'orcamento_ministerio',
-        description: `Liberação de Verba: ${approvedBudget.title} (${approvedBudget.ministry_name})`,
-        amount: approvedBudget.amount,
-        date: new Date().toISOString().slice(0, 10),
-        relatedMinistryId: approvedBudget.ministry_id,
-        relatedBudgetId: approvedBudget.id,
-      });
+    if (isSupabaseConfigured()) {
+      await supabase.from('budgets').update({
+        status: nextStatus,
+        maad_notes: maadNotes,
+        updated_at: new Date().toISOString(),
+      }).eq('id', budgetId);
+    }
 
-      await scheduleLocalNotification(
-        'Verba Liberada pelo MAAD! 💵',
-        `O MAAD aprovou a liberação de R$ ${approvedBudget.amount.toFixed(2)} para ${approvedBudget.ministry_name}.`
-      );
+    // Transação Atômica: Se for aprovado, lança a saída financeira no caixa
+    if (action === 'aprovar' && approvedBudget) {
+      try {
+        await addCashTransaction({
+          type: 'saida',
+          category: 'orcamento_ministerio',
+          description: `Liberação de Verba: ${approvedBudget.title} (${approvedBudget.ministry_name})`,
+          amount: approvedBudget.amount,
+          date: new Date().toISOString().slice(0, 10),
+          relatedMinistryId: approvedBudget.ministry_id,
+          relatedBudgetId: approvedBudget.id,
+        });
+
+        await scheduleLocalNotification(
+          'Verba Liberada pelo MAAD! 💵',
+          `O MAAD aprovou a liberação de R$ ${approvedBudget.amount.toFixed(2)} para ${approvedBudget.ministry_name}.`
+        );
+      } catch (txErr: any) {
+        // Rollback compensatório caso falhe a saída contábil
+        setBudgets(previousBudgets);
+        await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(previousBudgets));
+        if (isSupabaseConfigured()) {
+          await supabase.from('budgets').update({
+            status: 'encaminhado_maad',
+            maad_notes: 'Falha ao registrar saída no caixa; aprovação revertida.',
+          }).eq('id', budgetId);
+        }
+        throw new Error(`Falha atômica ao registrar saída contábil: ${txErr.message}`);
+      }
     }
   };
 
   // ==========================================
-  // MAAD: FLUXO DE CAIXA
+  // MAAD: FLUXO DE CAIXA (RBAC GUARD)
   // ==========================================
   const addCashTransaction = async (data: {
     type: CashFlowType;
@@ -899,6 +1160,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     relatedBudgetId?: string;
     receiptUrl?: string;
   }) => {
+    if (currentUser?.role !== 'maad' && currentUser?.role !== 'pastor' && currentUser?.role !== 'admin') {
+      throw new Error('Apenas o MAAD e o Pastor possuem autorização para registrar movimentações no caixa.');
+    }
+
     const newTx: CashTransaction = {
       id: generateUUID('0005'),
       type: data.type,
@@ -919,18 +1184,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await AsyncStorage.setItem(STORAGE_KEYS.CASH_TRANSACTIONS, JSON.stringify(updated));
 
     if (isSupabaseConfigured()) {
-      try {
-        await supabase.from('cash_transactions').insert({
-          id: newTx.id,
-          type: newTx.type,
-          category: newTx.category,
-          description: newTx.description,
-          amount: newTx.amount,
-          date: newTx.date,
-          registered_by: newTx.registered_by,
-        });
-      } catch (err) {
-        console.warn('Erro ao sincronizar lançamento no Supabase:', err);
+      const { error } = await supabase.from('cash_transactions').insert({
+        id: newTx.id,
+        type: newTx.type,
+        category: newTx.category,
+        description: newTx.description,
+        amount: newTx.amount,
+        date: newTx.date,
+        related_ministry_id: newTx.related_ministry_id,
+        related_budget_id: newTx.related_budget_id,
+        receipt_url: newTx.receipt_url,
+        registered_by: newTx.registered_by,
+      });
+
+      if (error) {
+        console.error('[Cash] Erro ao sincronizar lançamento no Supabase:', error.message);
       }
     }
   };
@@ -938,11 +1206,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const getCashSummary = () => {
     const totalEntradas = cashTransactions
       .filter(t => t.type === 'entrada')
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
 
     const totalSaidas = cashTransactions
       .filter(t => t.type === 'saida')
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
 
     return {
       totalEntradas,
@@ -961,11 +1229,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     receiptUrl?: string;
     relatedGoalId?: string;
   }) => {
+    const expenseId = generateUUID('0011');
     const newExpense: MinistryExpense = {
-      id: 'exp-' + Date.now(),
+      id: expenseId,
       ministry_id: data.ministryId,
       ministry_name: ministries.find(m => m.id === data.ministryId)?.name,
-      reported_by: currentUser?.id || 'u-lider',
+      reported_by: currentUser?.id || UUIDS.U_LIDER_LOUVOR,
       reporter_name: currentUser?.full_name || 'Líder',
       reporter_phone: currentUser?.phone || '11999999999',
       related_goal_id: data.relatedGoalId,
@@ -976,7 +1245,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'pendente_aprovacao',
       created_at: new Date().toISOString(),
     };
-    setExpenses([newExpense, ...expenses]);
+
+    const updated = [newExpense, ...expenses];
+    setExpenses(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase.from('ministry_expenses').insert({
+        id: newExpense.id,
+        ministry_id: newExpense.ministry_id,
+        reported_by: newExpense.reported_by,
+        related_goal_id: newExpense.related_goal_id,
+        description: newExpense.description,
+        amount: newExpense.amount,
+        expense_date: newExpense.expense_date,
+        receipt_url: newExpense.receipt_url,
+        status: newExpense.status,
+      });
+
+      if (error) {
+        console.error('[Expense] Erro ao sincronizar despesa no Supabase:', error.message);
+      }
+    }
 
     await scheduleLocalNotification(
       'Novo Comprovante de Gasto 🧾',
@@ -985,24 +1275,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const approveExpense = async (expenseId: string, approved: boolean) => {
+    if (currentUser?.role !== 'pastor' && currentUser?.role !== 'admin' && currentUser?.role !== 'maad') {
+      throw new Error('Apenas o Pastor ou MAAD podem validar comprovantes fiscais.');
+    }
+
+    const nextStatus = approved ? ('aprovado' as const) : ('rejeitado' as const);
     const updated = expenses.map(e => e.id === expenseId ? {
       ...e,
-      status: approved ? ('aprovado' as const) : ('rejeitado' as const)
+      status: nextStatus
     } : e);
+
     setExpenses(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('ministry_expenses').update({
+        status: nextStatus,
+      }).eq('id', expenseId);
+    }
   };
 
   const createAnnouncement = async (title: string, content: string, priority: 'normal' | 'urgente') => {
+    if (currentUser?.role !== 'pastor' && currentUser?.role !== 'admin') {
+      throw new Error('Apenas a Liderança Pastoral pode emitir comunicados no mural.');
+    }
+
     const newAnc: Announcement = {
-      id: 'anc-' + Date.now(),
-      author_id: currentUser?.id || 'u-pastor',
+      id: generateUUID('0012'),
+      author_id: currentUser?.id || UUIDS.U_PASTOR,
       author_name: currentUser?.full_name || 'Pastor Carlos',
       title,
       content,
       priority,
       created_at: new Date().toISOString(),
     };
-    setAnnouncements([newAnc, ...announcements]);
+
+    const updated = [newAnc, ...announcements];
+    setAnnouncements(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(updated));
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('announcements').insert({
+        id: newAnc.id,
+        author_id: newAnc.author_id,
+        title: newAnc.title,
+        content: newAnc.content,
+        priority: newAnc.priority,
+      });
+    }
 
     await scheduleLocalNotification(
       priority === 'urgente' ? '🚨 AVISO URGENTE DA IGREJA' : '📢 Comunicado da Igreja Aliado',
@@ -1042,7 +1362,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthenticated: !!currentUser,
         signIn,
         signOut,
-        switchUser,
         profiles,
         createAccount,
         toggleAccountStatus,
@@ -1067,6 +1386,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isOffline,
         setIsOffline,
         offlineQueueCount,
+        syncOfflineQueue,
         createGoal,
         submitReport,
         approveReport,

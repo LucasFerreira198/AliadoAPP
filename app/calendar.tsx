@@ -144,24 +144,22 @@ export default function CalendarScreen() {
   };
 
   const handleCancelEvent = (eventId: string, currentTitle: string) => {
-    Alert.prompt
-      ? Alert.prompt(
-          'Cancelar Esta Data',
-          `Informe o motivo do cancelamento de "${currentTitle}":`,
-          [
-            { text: 'Voltar', style: 'cancel' },
-            { 
-              text: 'Confirmar Cancelamento', 
-              onPress: async (reason) => {
-                await cancelSingleEvent(eventId, reason || 'Cancelado pela Secretaria');
-              } 
-            }
-          ]
-        )
-      : (async () => {
-          await cancelSingleEvent(eventId, 'Cancelado excepcionalmente pela Secretaria/Pastor');
-          Alert.alert('Culto Cancelado', 'Esta data foi marcada como cancelada no calendário.');
-        })();
+    Alert.alert(
+      'Cancelar Culto / Evento',
+      `Deseja realmente marcar "${currentTitle}" como cancelado no calendário oficial da igreja?`,
+      [
+        { text: 'Voltar', style: 'cancel' },
+        { 
+          text: 'Confirmar Cancelamento', 
+          style: 'destructive',
+          onPress: async () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            await cancelSingleEvent(eventId, 'Cancelado excepcionalmente pela Secretaria/Pastor');
+            Alert.alert('Evento Cancelado', 'Esta data foi marcada como cancelada na agenda.');
+          } 
+        }
+      ]
+    );
   };
 
   const handleRestoreEvent = async (eventId: string) => {

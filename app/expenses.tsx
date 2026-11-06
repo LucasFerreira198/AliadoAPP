@@ -20,6 +20,7 @@ import { WhatsAppQuickAction } from '../src/components/actions/WhatsAppQuickActi
 import { WhatsAppMessages } from '../src/services/whatsapp';
 import { Colors, getThemeColors } from '../src/theme/colors';
 import { parseCurrencyInput, formatCurrency } from '../src/utils/formatters';
+import { uploadMediaToSupabase } from '../src/services/mediaUpload';
 
 export default function ExpensesScreen() {
   const { 
@@ -42,12 +43,14 @@ export default function ExpensesScreen() {
   );
   const [receiptUrls, setReceiptUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   const isPastor = currentUser?.role === 'pastor' || currentUser?.role === 'admin';
-
-  const totalAmount = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalAmount = expenses.reduce((acc, curr) => acc + (typeof curr.amount === 'number' ? curr.amount : 0), 0);
 
   const handleSaveExpense = async () => {
+    if (loading) return; // Trava de concorrência / duplo clique
+
     const amount = parseCurrencyInput(amountStr);
     if (!description.trim() || amount <= 0) {
       Alert.alert('Dados Inválidos', 'Preencha a descrição e um valor válido para a despesa.');
@@ -56,33 +59,48 @@ export default function ExpensesScreen() {
 
     setLoading(true);
     try {
+      let finalReceiptUrl = receiptUrls[0];
+      if (finalReceiptUrl && !finalReceiptUrl.startsWith('http')) {
+        const uploadRes = await uploadMediaToSupabase(finalReceiptUrl);
+        finalReceiptUrl = uploadRes.url;
+      }
+
       await submitExpense({
         ministryId: selectedMinistryId,
-        description,
+        description: description.trim(),
         amount,
-        receiptUrl: receiptUrls[0],
+        receiptUrl: finalReceiptUrl,
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Sucesso', 'Comprovante enviado com sucesso para a conferência pastoral!');
+      Alert.alert('Sucesso', 'Comprovante registrado com sucesso e encaminhado para conferência!');
       setDescription('');
       setAmountStr('');
       setReceiptUrls([]);
       setShowNewExpense(false);
-    } catch {
-      Alert.alert('Erro', 'Não foi possível salvar a despesa.');
+    } catch (err: any) {
+      Alert.alert('Erro', err.message || 'Não foi possível salvar a despesa.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleApprove = async (id: string, approve: boolean) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await approveExpense(id, approve);
-    Alert.alert(
-      approve ? 'Despesa Aprovada' : 'Ajustes Solicitados',
-      approve ? 'O gasto foi validado com sucesso.' : 'O ministério foi informado para corrigir o lançamento.'
-    );
+    if (approvingId) return; // Trava de concorrência
+
+    setApprovingId(id);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await approveExpense(id, approve);
+      Alert.alert(
+        approve ? 'Despesa Aprovada' : 'Ajustes Solicitados',
+        approve ? 'O gasto foi validado com sucesso.' : 'O ministério foi informado para corrigir o lançamento.'
+      );
+    } catch (err: any) {
+      Alert.alert('Erro', err.message || 'Não foi possível atualizar o status da despesa.');
+    } finally {
+      setApprovingId(null);
+    }
   };
 
   return (
@@ -92,7 +110,7 @@ export default function ExpensesScreen() {
     >
       <Text style={[styles.title, { color: themeColors.textPrimary }]}>Prestação de Contas dos Ministérios</Text>
       <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
-        Lançamento de recibos, notas fiscais e controle de verba dos eventos da Igreja Metodista Aliado.
+        Lançamento de recibos, cupons fiscais e controle de verba dos eventos da Igreja Metodista Aliado.
       </Text>
 
       {/* Card de Total Acumulado */}
@@ -207,7 +225,7 @@ export default function ExpensesScreen() {
               </View>
 
               <Text style={[styles.expenseAmount, { color: isDark ? '#4ADE80' : '#16A34A' }]}>
-                R$ {exp.amount.toFixed(2)}
+                R$ {(typeof exp.amount === 'number' ? exp.amount : 0).toFixed(2)}
               </Text>
             </View>
 
@@ -248,43 +266,35 @@ export default function ExpensesScreen() {
                   messageText={WhatsAppMessages.expenseReview(
                     exp.reporter_name || 'Líder',
                     exp.description,
-                    `R$ ${exp.amount.toFixed(2)}`
+                    formatCurrency(exp.amount)
                   )}
-                  label="Dúvida Recibo"
+                  label="Tirar Dúvida WhatsApp"
                 />
               )}
+
+              {/* Ações Pastorais */}
+              {isPastor && !isApproved && (
+                <View style={styles.pastorActionBtns}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleApprove(exp.id, true)}
+                    disabled={approvingId === exp.id}
+                    style={styles.approveBtn}
+                  >
+                    <Check size={16} color="#FFFFFF" strokeWidth={3} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleApprove(exp.id, false)}
+                    disabled={approvingId === exp.id}
+                    style={styles.rejectBtn}
+                  >
+                    <X size={16} color="#FFFFFF" strokeWidth={3} />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
-
-            {/* Ações Pastorais de Aprovação */}
-            {isPastor && !isApproved && (
-              <View style={[styles.pastorActionsRow, { borderTopColor: themeColors.cardBorder }]}>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => handleApprove(exp.id, true)}
-                  style={[styles.approveBtn, { backgroundColor: isDark ? '#059669' : '#16A34A' }]}
-                >
-                  <Check size={16} color="#FFFFFF" strokeWidth={3} />
-                  <Text style={styles.approveBtnText}>Aprovar Despesa</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => handleApprove(exp.id, false)}
-                  style={[
-                    styles.rejectBtn, 
-                    { 
-                      backgroundColor: themeColors.actions.destructiveBg, 
-                      borderColor: themeColors.actions.destructiveBorder 
-                    }
-                  ]}
-                >
-                  <X size={16} color={themeColors.actions.destructiveText} strokeWidth={3} />
-                  <Text style={[styles.rejectBtnText, { color: themeColors.actions.destructiveText }]}>
-                    Pedir Ajuste
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
           </Card>
         );
       })}
@@ -301,42 +311,35 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    marginBottom: 16,
     lineHeight: 20,
+    marginBottom: 16,
   },
   totalCard: {
-    padding: 20,
     borderRadius: 16,
+    padding: 16,
     marginBottom: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   totalLabel: {
     color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   totalValue: {
-    color: '#FFFFFF',
-    fontSize: 32,
+    color: '#4ADE80',
+    fontSize: 28,
     fontWeight: '900',
     marginTop: 4,
   },
   formCard: {
     marginBottom: 20,
-    borderColor: '#DC2626',
   },
   formTitle: {
     fontSize: 16,
@@ -348,8 +351,8 @@ const styles = StyleSheet.create({
   },
   selectLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontWeight: '700',
+    marginBottom: 6,
   },
   chipsScroll: {
     flexDirection: 'row',
@@ -358,18 +361,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    marginRight: 8,
     borderWidth: 1,
-    minHeight: 44,
+    marginRight: 8,
+    minHeight: 40,
     justifyContent: 'center',
   },
-  minChipSelected: {},
   minChipText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   minChipTextSelected: {
-    fontWeight: '700',
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   listTitle: {
     fontSize: 16,
@@ -378,6 +381,7 @@ const styles = StyleSheet.create({
   },
   expenseCard: {
     marginBottom: 12,
+    padding: 14,
   },
   expenseTopRow: {
     flexDirection: 'row',
@@ -390,28 +394,27 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   expenseDesc: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    lineHeight: 22,
+    marginBottom: 2,
   },
   expenseMinistry: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#DC2626',
-    marginTop: 2,
+    color: Colors.primary.DEFAULT,
+    marginBottom: 2,
   },
   expenseAuthor: {
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11,
   },
   expenseAmount: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   receiptContainer: {
-    marginVertical: 10,
-    padding: 8,
     borderRadius: 10,
+    padding: 8,
+    marginBottom: 10,
   },
   receiptLabel: {
     fontSize: 11,
@@ -420,49 +423,35 @@ const styles = StyleSheet.create({
   },
   receiptImage: {
     width: '100%',
-    height: 140,
+    height: 160,
     borderRadius: 8,
   },
   expenseFooterRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     borderTopWidth: 1,
     paddingTop: 10,
+    gap: 8,
   },
-  pastorActionsRow: {
+  pastorActionBtns: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
+    gap: 8,
   },
   approveBtn: {
-    flex: 1,
-    minHeight: 44, // UI/UX Pro Max touch target
-    flexDirection: 'row',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#16A34A',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    borderRadius: 10,
-  },
-  approveBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 13,
   },
   rejectBtn: {
-    flex: 1,
-    minHeight: 44,
-    flexDirection: 'row',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#DC2626',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 10,
-  },
-  rejectBtnText: {
-    fontWeight: '700',
-    fontSize: 13,
   },
 });

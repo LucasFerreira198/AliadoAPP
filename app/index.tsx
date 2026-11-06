@@ -649,11 +649,11 @@ export default function HomeScreen() {
                           isPastorView={false}
                         />
 
-                        {asg?.status !== 'concluida' && (
+                        {asg?.status !== 'concluida' && asg?.id && (
                           <View style={styles.leaderActionsRow}>
                             <Button
                               title="Entregar Relatório (Fotos/Vídeo)"
-                              onPress={() => router.push(`/report/${asg?.id || goal.id}`)}
+                              onPress={() => router.push(`/report/${asg.id}`)}
                               variant="primary"
                               size="sm"
                               icon={<Send size={16} color="#FFFFFF" />}

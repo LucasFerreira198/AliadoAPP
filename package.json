@@ -36,6 +36,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "build:web": "expo export -p web",
     "test": "node --test --experimental-strip-types __tests__/**/*.test.ts",
     "build:android": "eas build -p android --profile preview",
     "build:ios": "eas build -p ios --profile preview"

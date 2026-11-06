@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { SupabaseSecureStorageAdapter } from './secureStorage';
 
-// Configurações do Supabase (lê das variáveis de ambiente Expo ou usa fallback seguro para desenvolvimento)
+// Configurações do Supabase (lê das variáveis de ambiente Expo ou fallback para desenvolvimento)
 const supabaseUrl = 
   Constants.expoConfig?.extra?.supabaseUrl || 
   process.env.EXPO_PUBLIC_SUPABASE_URL || 
@@ -13,17 +13,21 @@ const supabaseAnonKey =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy-anon-key-metodista-aliado';
 
-export const isSupabaseConfigured = () => {
+export const isSupabaseConfigured = (): boolean => {
+  const url = process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl;
+  const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.supabaseAnonKey;
+
   return (
-    process.env.EXPO_PUBLIC_SUPABASE_URL !== undefined &&
-    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY !== undefined &&
-    !process.env.EXPO_PUBLIC_SUPABASE_URL.includes('sua-igreja-metodista')
+    !!url &&
+    !!key &&
+    !url.includes('sua-igreja-metodista') &&
+    url.startsWith('https://')
   );
 };
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
+    storage: SupabaseSecureStorageAdapter,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

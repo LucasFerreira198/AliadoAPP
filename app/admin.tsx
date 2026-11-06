@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -7,6 +7,7 @@ import {
   TouchableOpacity, 
   Alert 
 } from 'react-native';
+import { router } from 'expo-router';
 import { 
   ShieldCheck, 
   UserPlus, 
@@ -15,7 +16,8 @@ import {
   Users, 
   Power, 
   Phone, 
-  Mail 
+  Mail,
+  AlertTriangle 
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../src/context/AppContext';
@@ -39,6 +41,16 @@ export default function AdminScreen() {
   const themeColors = getThemeColors(theme);
   const isDark = theme === 'dark';
 
+  // RBAC Guard: Apenas Administrador Geral pode acessar
+  const isAdmin = currentUser?.role === 'admin';
+
+  useEffect(() => {
+    if (currentUser && !isAdmin) {
+      Alert.alert('Acesso Negado', 'Apenas o Administrador Geral possui autorização para este painel.');
+      router.replace('/');
+    }
+  }, [currentUser, isAdmin]);
+
   const [showNewUser, setShowNewUser] = useState(false);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -46,8 +58,23 @@ export default function AdminScreen() {
   const [role, setRole] = useState<UserRole>('leader');
   const [selectedMinistryId, setSelectedMinistryId] = useState(ministries[0]?.id || '');
   const [loading, setLoading] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  if (!isAdmin) {
+    return (
+      <View style={[styles.deniedContainer, { backgroundColor: themeColors.background }]}>
+        <AlertTriangle size={48} color="#DC2626" />
+        <Text style={[styles.deniedTitle, { color: themeColors.textPrimary }]}>Acesso Restrito</Text>
+        <Text style={[styles.deniedSub, { color: themeColors.textSecondary }]}>
+          Você não possui privilégios para acessar a gestão de contas.
+        </Text>
+      </View>
+    );
+  }
 
   const handleCreate = async () => {
+    if (loading) return; // Trava de concorrência / duplo clique
+
     if (!fullName.trim() || !email.trim() || !phone.trim()) {
       Alert.alert('Dados Incompletos', 'Preencha o nome completo, email e telefone.');
       return;
@@ -56,9 +83,9 @@ export default function AdminScreen() {
     setLoading(true);
     try {
       await createAccount({
-        full_name: fullName,
-        email,
-        phone,
+        full_name: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
         role,
         ministry_id: role === 'leader' ? selectedMinistryId : undefined,
       });
@@ -69,20 +96,34 @@ export default function AdminScreen() {
       setEmail('');
       setPhone('');
       setShowNewUser(false);
-    } catch {
-      Alert.alert('Erro', 'Não foi possível cadastrar o usuário.');
+    } catch (err: any) {
+      Alert.alert('Erro', err.message || 'Não foi possível cadastrar o usuário.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleToggle = async (userId: string, currentStatus: boolean, name: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await toggleAccountStatus(userId);
-    Alert.alert(
-      currentStatus ? 'Conta Desativada' : 'Conta Ativada',
-      `O acesso de ${name} foi ${currentStatus ? 'suspenso' : 'reativado'}.`
-    );
+    if (togglingId) return; // Trava contra múltiplos cliques rápidos
+
+    if (userId === currentUser?.id) {
+      Alert.alert('Ação Não Permitida', 'Você não pode desativar sua própria conta de administrador.');
+      return;
+    }
+
+    setTogglingId(userId);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await toggleAccountStatus(userId);
+      Alert.alert(
+        currentStatus ? 'Conta Desativada' : 'Conta Ativada',
+        `O acesso de ${name} foi ${currentStatus ? 'suspenso' : 'reativado'}.`
+      );
+    } catch (err: any) {
+      Alert.alert('Erro', err.message || 'Não foi possível alterar o status da conta.');
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   return (
@@ -236,6 +277,8 @@ export default function AdminScreen() {
 
       {profiles.map(p => {
         const isActive = p.is_active !== false;
+        const isSelf = p.id === currentUser?.id;
+
         return (
           <Card key={p.id} style={styles.userCard}>
             <View style={styles.userRow}>
@@ -280,34 +323,37 @@ export default function AdminScreen() {
                 </View>
               </View>
 
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => handleToggle(p.id, isActive, p.full_name)}
-                style={[
-                  styles.toggleBtn, 
-                  {
-                    backgroundColor: isActive 
-                      ? themeColors.actions.successActionBg 
-                      : themeColors.actions.destructiveBg,
-                    borderColor: isActive 
-                      ? themeColors.actions.successActionBorder 
-                      : themeColors.actions.destructiveBorder,
-                  }
-                ]}
-              >
-                <Power 
-                  size={18} 
-                  color={isActive ? themeColors.actions.successActionText : themeColors.actions.destructiveText} 
-                />
-                <Text 
+              {!isSelf && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleToggle(p.id, isActive, p.full_name)}
+                  disabled={togglingId === p.id}
                   style={[
-                    styles.toggleText, 
-                    { color: isActive ? themeColors.actions.successActionText : themeColors.actions.destructiveText }
+                    styles.toggleBtn, 
+                    {
+                      backgroundColor: isActive 
+                        ? themeColors.actions.successActionBg 
+                        : themeColors.actions.destructiveBg,
+                      borderColor: isActive 
+                        ? themeColors.actions.successActionBorder 
+                        : themeColors.actions.destructiveBorder,
+                    }
                   ]}
                 >
-                  {isActive ? 'Ativo' : 'Inativo'}
-                </Text>
-              </TouchableOpacity>
+                  <Power 
+                    size={18} 
+                    color={isActive ? themeColors.actions.successActionText : themeColors.actions.destructiveText} 
+                  />
+                  <Text 
+                    style={[
+                      styles.toggleText, 
+                      { color: isActive ? themeColors.actions.successActionText : themeColors.actions.destructiveText }
+                    ]}
+                  >
+                    {isActive ? 'Ativo' : 'Inativo'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </Card>
         );
@@ -319,6 +365,23 @@ export default function AdminScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  deniedContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  deniedTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 12,
+  },
+  deniedSub: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 20,
   },
   content: {
     padding: 16,
@@ -369,41 +432,28 @@ const styles = StyleSheet.create({
   },
   roleBtn: {
     flex: 1,
-    minHeight: 44, // UI/UX Pro Max
+    minHeight: 44,
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  roleBtnSelected: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
   },
   roleBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.light.textSecondary,
-  },
-  roleBtnTextSelected: {
-    color: '#FFFFFF',
   },
   minChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: '#F1F5F9',
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     minHeight: 44,
     justifyContent: 'center',
   },
   minChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.light.textPrimary,
   },
   sectionTitle: {
     fontSize: 16,
@@ -458,14 +508,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
     minHeight: 44,
-  },
-  toggleBtnActive: {
-    backgroundColor: '#DCFCE7',
-    borderColor: '#86EFAC',
-  },
-  toggleBtnInactive: {
-    backgroundColor: '#FEE2E2',
-    borderColor: '#FECACA',
   },
   toggleText: {
     fontSize: 11,

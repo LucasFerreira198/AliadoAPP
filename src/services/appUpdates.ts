@@ -1,12 +1,15 @@
 import * as Updates from 'expo-updates';
 import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isNewerVersion, cleanVersion } from '../utils/version';
-import { scheduleLocalNotification } from './notifications';
 
 export const GITHUB_REPO_OWNER = 'LucasFerreira198';
 export const GITHUB_REPO_NAME = 'AliadoAPP';
 export const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest`;
+
+const UPDATE_CACHE_KEY = '@aliado_update_check_cache';
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 horas de intervalo para evitar rate limit de 60 req/h
 
 export interface GitHubReleaseInfo {
   tag_name: string;
@@ -40,12 +43,23 @@ export function getCurrentAppVersion(): string {
 }
 
 /**
- * Consulta a API do GitHub para verificar se existe uma Release mais recente publicada.
+ * Consulta a API do GitHub para verificar se existe uma Release mais recente publicada,
+ * com cache de 6 horas para proteger contra rate limit em redes compartilhadas.
  */
-export async function checkForGitHubRelease(): Promise<AppUpdateCheckResult> {
+export async function checkForGitHubRelease(force = false): Promise<AppUpdateCheckResult> {
   const currentVersion = getCurrentAppVersion();
 
   try {
+    if (!force) {
+      const cached = await AsyncStorage.getItem(UPDATE_CACHE_KEY);
+      if (cached) {
+        const { timestamp, result } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_TTL_MS && result) {
+          return { ...result, currentVersion };
+        }
+      }
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 segundos de timeout
 
@@ -60,13 +74,11 @@ export async function checkForGitHubRelease(): Promise<AppUpdateCheckResult> {
     clearTimeout(timeoutId);
 
     if (response.status === 404) {
-      // Repositório recém-criado sem releases publicadas ainda
       return { hasUpdate: false, type: 'none', currentVersion };
     }
 
     if (response.status === 403) {
-      // Rate limit atingido da API pública do GitHub
-      console.warn('GitHub API rate limit atingido, pulando checagem de release.');
+      console.warn('[AppUpdates] GitHub API rate limit atingido, utilizando versão local.');
       return { hasUpdate: false, type: 'none', currentVersion };
     }
 
@@ -77,12 +89,13 @@ export async function checkForGitHubRelease(): Promise<AppUpdateCheckResult> {
     const data: GitHubReleaseInfo = await response.json();
     const latestVersion = data.tag_name || '1.0.0';
 
+    let result: AppUpdateCheckResult = { hasUpdate: false, type: 'none', currentVersion };
+
     if (isNewerVersion(latestVersion, currentVersion)) {
-      // Procura se tem asset APK anexado
       const apkAsset = data.assets?.find(a => a.name.endsWith('.apk') || a.content_type?.includes('android'));
       const downloadUrl = apkAsset?.browser_download_url || data.html_url;
 
-      return {
+      result = {
         hasUpdate: true,
         type: 'github_release',
         currentVersion,
@@ -92,8 +105,14 @@ export async function checkForGitHubRelease(): Promise<AppUpdateCheckResult> {
       };
     }
 
-    return { hasUpdate: false, type: 'none', currentVersion };
-  } catch (err) {
+    // Salva no cache com timestamp
+    await AsyncStorage.setItem(
+      UPDATE_CACHE_KEY,
+      JSON.stringify({ timestamp: Date.now(), result })
+    );
+
+    return result;
+  } catch {
     // Falha silenciosa de rede/timeout para não impactar o fluxo do usuário
     return { hasUpdate: false, type: 'none', currentVersion };
   }
@@ -118,8 +137,8 @@ export async function checkForOTAUpdate(): Promise<AppUpdateCheckResult> {
         };
       }
     }
-  } catch (err) {
-    // Em Expo Go ou ambiente de desenvolvimento, Updates.checkForUpdateAsync pode não estar habilitado
+  } catch {
+    // Em Expo Go ou desenvolvimento, Updates.checkForUpdateAsync pode não estar habilitado
   }
 
   return { hasUpdate: false, type: 'none', currentVersion };
@@ -127,22 +146,16 @@ export async function checkForOTAUpdate(): Promise<AppUpdateCheckResult> {
 
 /**
  * Checagem Unificada de Atualizações (OTA + GitHub Releases).
- * Primeiro verifica se há OTA instantâneo (sem necessidade de reinstalação);
- * se não houver, verifica se há nova Release no GitHub.
  */
 export async function checkForAppUpdates(): Promise<AppUpdateCheckResult> {
-  // 1. Tenta OTA se disponível
   const otaResult = await checkForOTAUpdate();
   if (otaResult.hasUpdate) return otaResult;
 
-  // 2. Tenta GitHub Release
   return await checkForGitHubRelease();
 }
 
 /**
- * Executa a atualização no aparelho:
- * - Se for OTA: baixa o bundle e reinicia o app suavemente.
- * - Se for GitHub Release: abre o link de download seguro do APK ou da Release oficial.
+ * Executa a atualização no aparelho.
  */
 export async function applyAppUpdate(update: AppUpdateCheckResult): Promise<boolean> {
   if (update.type === 'ota') {
@@ -151,7 +164,7 @@ export async function applyAppUpdate(update: AppUpdateCheckResult): Promise<bool
       await Updates.reloadAsync();
       return true;
     } catch (err) {
-      console.warn('Erro ao aplicar OTA update:', err);
+      console.warn('[AppUpdates] Erro ao aplicar OTA update:', err);
       return false;
     }
   }

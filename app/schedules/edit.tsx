@@ -23,6 +23,8 @@ import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { BottomNavBar } from '../../src/components/ui/BottomNavBar';
 import { Colors, getThemeColors } from '../../src/theme/colors';
+import { isValidISODate } from '../../src/utils/formatters';
+import { UUIDS } from '../../src/services/mockData';
 
 export default function ScheduleEditScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -45,7 +47,7 @@ export default function ScheduleEditScreen() {
   );
   const [notes, setNotes] = useState(existingSchedule?.notes || '');
   
-  // Lista de Voluntários e Funções vinculados a perfis reais
+  // Lista de Voluntários e Funções
   const [members, setMembers] = useState<Array<{ user_id?: string; user_name: string; role_in_service: string }>>(
     existingSchedule?.members.map(m => ({ user_id: m.user_id, user_name: m.user_name, role_in_service: m.role_in_service })) || [
       { user_id: currentUser?.id, user_name: currentUser?.full_name || 'Líder', role_in_service: 'Coordenação' },
@@ -70,7 +72,7 @@ export default function ScheduleEditScreen() {
 
   const getUserIdForMember = (userName: string): string => {
     const matched = profiles.find(p => p.full_name.toLowerCase() === userName.toLowerCase());
-    return matched ? matched.id : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
+    return matched ? matched.id : `00000000-0008-4000-8000-${Date.now().toString(16).slice(-12).padStart(12, '0')}`;
   };
 
   const handleAddMember = (name?: string, role?: string) => {
@@ -97,10 +99,20 @@ export default function ScheduleEditScreen() {
   };
 
   const handleSave = async () => {
+    if (loading) return; // Trava contra duplo clique
+
     if (!title.trim()) {
       Alert.alert('Título Obrigatório', 'Dê um título para a escala.');
       return;
     }
+
+    // Validação estrita de formato de data
+    const cleanDate = eventDate.trim();
+    if (!isValidISODate(cleanDate)) {
+      Alert.alert('Data Inválida', 'A data do culto deve estar estritamente no formato AAAA-MM-DD (exemplo: 2026-11-20).');
+      return;
+    }
+
     if (members.length === 0) {
       Alert.alert('Escala Vazia', 'Adicione pelo menos um voluntário escalado.');
       return;
@@ -110,9 +122,9 @@ export default function ScheduleEditScreen() {
     try {
       if (existingSchedule) {
         await updateSchedule(existingSchedule.id, {
-          title,
-          event_date: eventDate,
-          notes,
+          title: title.trim(),
+          event_date: cleanDate,
+          notes: notes.trim(),
           members: members.map((m, idx) => ({
             id: existingSchedule.members[idx]?.id || `00000000-0008-4000-8000-${Date.now().toString(16).slice(-8)}${idx.toString().padStart(4, '0')}`,
             schedule_id: existingSchedule.id,
@@ -122,25 +134,28 @@ export default function ScheduleEditScreen() {
             status: 'pendente',
           })),
         });
-        Alert.alert('Escala Atualizada!', 'As alterações foram salvas e os voluntários notificados.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Escala Atualizada!', 'As alterações foram salvas com sucesso.');
       } else {
+        const ministryId = currentUser?.ministry_id || UUIDS.MIN_LOUVOR;
         await createSchedule({
-          ministryId: currentUser?.ministry_id || 'a0000001-0000-0000-0000-000000000001',
-          title,
-          eventDate,
-          notes,
+          ministryId,
+          title: title.trim(),
+          eventDate: cleanDate,
+          notes: notes.trim(),
           members: members.map(m => ({
             user_id: m.user_id || getUserIdForMember(m.user_name),
             user_name: m.user_name,
             role_in_service: m.role_in_service,
           })),
         });
-        Alert.alert('Nova Escala Criada!', 'A escala do seu ministério foi publicada com sucesso.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Nova Escala Criada!', 'A escala do ministério foi publicada com sucesso.');
       }
 
       router.back();
-    } catch {
-      Alert.alert('Erro', 'Não foi possível salvar a escala.');
+    } catch (err: any) {
+      Alert.alert('Erro', err.message || 'Não foi possível salvar a escala.');
     } finally {
       setLoading(false);
     }
@@ -199,14 +214,14 @@ export default function ScheduleEditScreen() {
 
           <Input
             label="Ou confirme o formato (AAAA-MM-DD) *"
-            placeholder="2026-11-08"
+            placeholder="2026-11-20"
             value={eventDate}
             onChangeText={setEventDate}
           />
         </View>
 
         <Input
-          label="Orientações e Horário de Passagem *"
+          label="Orientações e Horário de Passagem"
           placeholder="Ex: Chegar às 17h30 para ensaio e oração. Traje: Preto."
           value={notes}
           onChangeText={setNotes}
@@ -249,24 +264,16 @@ export default function ScheduleEditScreen() {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setNewMemberRole(role);
                 }}
-                style={[
-                  styles.roleChip,
-                  {
-                    backgroundColor: newMemberRole === role ? Colors.primary.DEFAULT : (isDark ? '#1E293B' : '#F1F5F9'),
-                    borderColor: newMemberRole === role ? Colors.primary.DEFAULT : themeColors.border,
-                  }
-                ]}
+                style={[styles.roleChip, { backgroundColor: themeColors.subtleBg, borderColor: themeColors.border }]}
               >
-                <Text style={[styles.roleChipText, { color: newMemberRole === role ? '#FFFFFF' : themeColors.textPrimary }]}>
-                  {role}
-                </Text>
+                <Text style={[styles.roleChipText, { color: themeColors.textPrimary }]}>{role}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
           <Button
-            title="Adicionar à Escala"
-            onPress={handleAddMember}
+            title="+ Adicionar à Lista de Escala"
+            onPress={() => handleAddMember()}
             variant="secondary"
             size="sm"
             icon={<UserPlus size={16} color="#FFFFFF" />}
@@ -274,12 +281,12 @@ export default function ScheduleEditScreen() {
           />
         </Card>
 
-        {/* Lista de Membros Escalados */}
+        {/* Lista de Escalados */}
         <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
           Voluntários Escalados ({members.length})
         </Text>
 
-        {members.map((m, index) => {
+        {members.map((m, idx) => {
           const initials = m.user_name
             .split(' ')
             .filter(Boolean)
@@ -288,14 +295,13 @@ export default function ScheduleEditScreen() {
             .join('') || 'V';
 
           return (
-            <Card key={index} style={styles.memberCard}>
+            <Card key={idx} style={styles.memberCard}>
               <View style={styles.memberRow}>
                 <View style={styles.memberLeft}>
-                  <View style={[styles.avatarCircle, { backgroundColor: getAvatarColor(index) }]}>
+                  <View style={[styles.avatarCircle, { backgroundColor: getAvatarColor(idx) }]}>
                     <Text style={styles.avatarInitials}>{initials}</Text>
                   </View>
-
-                  <View style={styles.memberInfo}>
+                  <View>
                     <Text style={[styles.memberName, { color: themeColors.textPrimary }]}>{m.user_name}</Text>
                     <Text style={styles.memberRole}>{m.role_in_service}</Text>
                   </View>
@@ -303,11 +309,11 @@ export default function ScheduleEditScreen() {
 
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  onPress={() => handleRemoveMember(index)}
-                  style={styles.deleteBtn}
-                  accessibilityLabel="Remover voluntário"
+                  onPress={() => handleRemoveMember(idx)}
+                  style={styles.removeBtn}
+                  accessibilityLabel="Remover voluntário da escala"
                 >
-                  <Trash2 size={18} color="#DC2626" />
+                  <Trash2 size={16} color="#DC2626" />
                 </TouchableOpacity>
               </View>
             </Card>
@@ -315,7 +321,7 @@ export default function ScheduleEditScreen() {
         })}
 
         <Button
-          title="Salvar e Publicar Escala"
+          title={existingSchedule ? 'Salvar Alterações na Escala' : 'Publicar Escala do Ministério'}
           onPress={handleSave}
           loading={loading}
           variant="primary"
@@ -325,7 +331,6 @@ export default function ScheduleEditScreen() {
         />
       </ScrollView>
 
-      {/* Barra de Navegação Inferior Ergonômica Fixa */}
       <BottomNavBar activeTab="escalas" />
     </View>
   );
@@ -342,6 +347,16 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 40,
   },
+  title: {
+    fontSize: 22,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
   inputLabel: {
     fontSize: 14,
     fontWeight: '700',
@@ -349,52 +364,26 @@ const styles = StyleSheet.create({
   },
   quickChipsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 10,
   },
   quickChipBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1,
     minHeight: 38,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   quickChipText: {
     fontSize: 12,
     fontWeight: '700',
   },
-  roleChipsRow: {
-    gap: 8,
-    paddingVertical: 8,
-  },
-  roleChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1,
-    minHeight: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  roleChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 16,
-  },
   addMemberCard: {
+    marginTop: 8,
     marginBottom: 16,
-    borderColor: '#0F172A',
+    padding: 16,
   },
   addMemberTitle: {
     fontSize: 15,
@@ -404,6 +393,21 @@ const styles = StyleSheet.create({
   addInputsRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  roleChipsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 6,
+  },
+  roleChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  roleChipText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   sectionTitle: {
     fontSize: 16,
@@ -416,44 +420,36 @@ const styles = StyleSheet.create({
   },
   memberRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   memberLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    flex: 1,
+    gap: 10,
   },
   avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitials: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
   },
-  memberInfo: {
-    flex: 1,
-  },
   memberName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
   },
   memberRole: {
-    fontSize: 13,
-    color: Colors.primary.DEFAULT,
-    fontWeight: '600',
-    marginTop: 2,
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 1,
   },
-  deleteBtn: {
-    width: 44, // UI/UX Pro Max touch area
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+  removeBtn: {
+    padding: 8,
   },
 });

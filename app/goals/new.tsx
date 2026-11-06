@@ -17,7 +17,7 @@ import { GoalPriority } from '../../src/types';
 import { Colors, getThemeColors } from '../../src/theme/colors';
 
 export default function NewGoalScreen() {
-  const { ministries, createGoal, theme } = useApp();
+  const { ministries, createGoal, theme, currentUser } = useApp();
   const themeColors = getThemeColors(theme);
 
   const [title, setTitle] = useState('');
@@ -47,6 +47,8 @@ export default function NewGoalScreen() {
   };
 
   const handleSave = async () => {
+    if (loading) return; // Trava de duplo clique
+
     if (!title.trim()) {
       Alert.alert('Campo Obrigatório', 'Por favor, informe o título da meta.');
       return;
@@ -64,8 +66,8 @@ export default function NewGoalScreen() {
     try {
       const dueDate = new Date(Date.now() + daysOffset * 24 * 60 * 60 * 1000).toISOString();
       await createGoal({
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim(),
         priority,
         dueDate,
         ministryIds: selectedMinistries,
@@ -77,8 +79,8 @@ export default function NewGoalScreen() {
         `A demanda foi distribuída para ${selectedMinistries.length} ministério(s) com sucesso. Todos os líderes foram notificados.`,
         [{ text: 'OK', onPress: () => router.back() }]
       );
-    } catch {
-      Alert.alert('Erro', 'Não foi possível salvar a meta no momento.');
+    } catch (err: any) {
+      Alert.alert('Erro', err.message || 'Não foi possível salvar a meta no momento.');
     } finally {
       setLoading(false);
     }
@@ -234,7 +236,6 @@ export default function NewGoalScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
   },
   content: {
     padding: 16,
@@ -243,19 +244,16 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: Colors.light.textPrimary,
     marginBottom: 4,
   },
   pageSubtitle: {
     fontSize: 14,
-    color: Colors.light.textSecondary,
     marginBottom: 20,
     lineHeight: 20,
   },
   sectionLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.light.textPrimary,
     marginBottom: 8,
   },
   priorityRow: {
@@ -265,11 +263,9 @@ const styles = StyleSheet.create({
   },
   priorityBtn: {
     flex: 1,
-    minHeight: 44, // UI/UX Pro Max
+    minHeight: 44,
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -280,7 +276,6 @@ const styles = StyleSheet.create({
   priorityText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.light.textSecondary,
   },
   priorityTextSelected: {
     color: '#FFFFFF',
@@ -296,9 +291,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -309,7 +302,6 @@ const styles = StyleSheet.create({
   dueText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.light.textSecondary,
   },
   dueTextSelected: {
     color: '#FFFFFF',
@@ -342,9 +334,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
     borderRadius: 12,
     padding: 12,
     minHeight: 48,
@@ -367,11 +357,9 @@ const styles = StyleSheet.create({
   ministryName: {
     fontSize: 15,
     fontWeight: '700',
-    color: Colors.light.textPrimary,
   },
   ministryLeader: {
     fontSize: 12,
-    color: Colors.light.textSecondary,
     marginTop: 2,
   },
   checkboxCircle: {

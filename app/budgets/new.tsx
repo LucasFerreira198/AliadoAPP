@@ -15,6 +15,7 @@ import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Colors, getThemeColors } from '../../src/theme/colors';
 import { parseCurrencyInput } from '../../src/utils/formatters';
+import { UUIDS } from '../../src/services/mockData';
 
 export default function NewBudgetScreen() {
   const { currentUser, requestBudget, theme } = useApp();
@@ -27,6 +28,8 @@ export default function NewBudgetScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
+    if (loading) return; // Trava contra múltiplos toques rápidos
+
     const amount = parseCurrencyInput(amountStr);
     if (!title.trim() || !description.trim() || amount <= 0) {
       Alert.alert('Dados Incompletos', 'Preencha o título, justificativa e um valor válido de verba.');
@@ -35,10 +38,11 @@ export default function NewBudgetScreen() {
 
     setLoading(true);
     try {
+      const ministryId = currentUser?.ministry_id || UUIDS.MIN_LOUVOR;
       await requestBudget({
-        ministryId: currentUser?.ministry_id || 'min-louvor',
-        title,
-        description,
+        ministryId,
+        title: title.trim(),
+        description: description.trim(),
         amount,
       });
 
@@ -48,8 +52,8 @@ export default function NewBudgetScreen() {
         'O Pastor Carlos irá analisar o pedido. Se aprovado na triagem pastoral, será encaminhado ao MAAD para liberação contábil da verba.',
         [{ text: 'OK', onPress: () => router.back() }]
       );
-    } catch {
-      Alert.alert('Erro', 'Não foi possível enviar a solicitação.');
+    } catch (err: any) {
+      Alert.alert('Erro', err.message || 'Não foi possível enviar a solicitação.');
     } finally {
       setLoading(false);
     }
@@ -80,7 +84,7 @@ export default function NewBudgetScreen() {
           <Text style={[styles.flowTitle, { color: isDark ? '#4ADE80' : '#15803D' }]}>Fluxo de Aprovação Contábil</Text>
         </View>
         <Text style={[styles.flowSteps, { color: isDark ? '#86EFAC' : '#166534' }]}>
-          1. Líder solicita $\rightarrow$ 2. Pastor filtra $\rightarrow$ 3. MAAD libera verba
+          1. Líder solicita → 2. Pastor filtra → 3. MAAD libera verba
         </Text>
       </Card>
 
@@ -140,8 +144,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   flowCard: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#BBF7D0',
     marginBottom: 16,
   },
   flowHeader: {
@@ -153,11 +155,10 @@ const styles = StyleSheet.create({
   flowTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#15803D',
   },
   flowSteps: {
     fontSize: 12,
-    color: '#166534',
     fontWeight: '600',
+    marginTop: 2,
   },
 });

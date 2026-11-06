@@ -17,7 +17,8 @@ export const SecureStorageService = {
         });
       }
     } catch (err) {
-      console.warn(`Erro ao salvar SecureStore (${key}):`, err);
+      console.warn(`[SecureStorage] Erro ao gravar chave segura (${key}):`, err);
+      // No ambiente web ou simulador com falha no keystore
       await AsyncStorage.setItem(`@sec_${key}`, value);
     }
   },
@@ -27,9 +28,12 @@ export const SecureStorageService = {
       if (Platform.OS === 'web') {
         return await AsyncStorage.getItem(`@sec_${key}`);
       }
-      return await SecureStore.getItemAsync(key);
+      const val = await SecureStore.getItemAsync(key);
+      if (val !== null) return val;
+      // Fallback para ler dados legados caso existam
+      return await AsyncStorage.getItem(`@sec_${key}`);
     } catch (err) {
-      console.warn(`Erro ao ler SecureStore (${key}):`, err);
+      console.warn(`[SecureStorage] Erro ao ler chave segura (${key}):`, err);
       return await AsyncStorage.getItem(`@sec_${key}`);
     }
   },
@@ -41,8 +45,26 @@ export const SecureStorageService = {
       } else {
         await SecureStore.deleteItemAsync(key);
       }
+      await AsyncStorage.removeItem(`@sec_${key}`);
     } catch (err) {
+      console.warn(`[SecureStorage] Erro ao deletar chave segura (${key}):`, err);
       await AsyncStorage.removeItem(`@sec_${key}`);
     }
+  },
+};
+
+/**
+ * Adaptador compatível com o cliente do Supabase (@supabase/supabase-js)
+ * para persistência segura de tokens JWT no Keystore/Keychain.
+ */
+export const SupabaseSecureStorageAdapter = {
+  getItem: (key: string): Promise<string | null> => {
+    return SecureStorageService.getItem(key);
+  },
+  setItem: (key: string, value: string): Promise<void> => {
+    return SecureStorageService.setItem(key, value);
+  },
+  removeItem: (key: string): Promise<void> => {
+    return SecureStorageService.deleteItem(key);
   },
 };

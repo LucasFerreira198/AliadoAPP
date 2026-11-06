@@ -18,9 +18,11 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab }) => {
   const themeColors = getThemeColors(theme);
   const isDark = theme === 'dark';
 
-  // Contagem de pendências para badge visual no MAAD
-  const isPastor = currentUser?.role === 'pastor' || currentUser?.role === 'admin';
-  const pendingCount = isPastor 
+  const isPastorOrAdmin = currentUser?.role === 'pastor' || currentUser?.role === 'admin';
+  const isMaadAuthorized = isPastorOrAdmin || currentUser?.role === 'maad';
+  const isLeaderOrHigher = isPastorOrAdmin || currentUser?.role === 'leader';
+
+  const pendingCount = isPastorOrAdmin
     ? budgets.filter(b => b.status === 'aguardando_pastor').length 
     : budgets.filter(b => b.status === 'encaminhado_maad').length;
 
@@ -39,26 +41,30 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab }) => {
     route: string;
     Icon: any;
     badge?: number;
+    authorized: boolean;
   }
 
-  const tabs: TabItem[] = [
+  const allTabs: TabItem[] = [
     {
       id: 'inicio',
       label: 'Início',
       route: '/',
       Icon: Home,
+      authorized: true,
     },
     {
       id: 'agenda',
       label: 'Agenda',
       route: '/calendar',
       Icon: Calendar,
+      authorized: true,
     },
     {
       id: 'escalas',
       label: 'Escalas',
       route: '/schedules/edit',
       Icon: Users,
+      authorized: isLeaderOrHigher,
     },
     {
       id: 'maad',
@@ -66,14 +72,18 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab }) => {
       route: '/maad',
       Icon: Landmark,
       badge: pendingCount > 0 ? pendingCount : undefined,
+      authorized: isMaadAuthorized,
     },
     {
       id: 'mural',
       label: 'Mural',
       route: '/announcements',
       Icon: Bell,
+      authorized: true,
     },
   ];
+
+  const visibleTabs = allTabs.filter(t => t.authorized);
 
   const handleTabPress = (route: string, tabId: string) => {
     if (currentActive === tabId) return;
@@ -93,7 +103,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab }) => {
       ]}
     >
       <View style={styles.tabsRow}>
-        {tabs.map(tab => {
+        {visibleTabs.map(tab => {
           const isActive = currentActive === tab.id;
           const { Icon } = tab;
           const activeColor = Colors.primary.DEFAULT;
@@ -107,25 +117,17 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab }) => {
               style={styles.tabBtn}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
-              accessibilityLabel={`Aba ${tab.label}`}
+              accessibilityLabel={tab.label}
             >
               <View style={styles.iconWrapper}>
-                <View 
-                  style={[
-                    styles.iconPill, 
-                    isActive && { backgroundColor: isDark ? 'rgba(197, 34, 31, 0.2)' : '#FEE2E2' }
-                  ]}
-                >
-                  <Icon 
-                    size={22} 
-                    color={isActive ? activeColor : inactiveColor} 
-                    strokeWidth={isActive ? 2.5 : 2}
-                  />
-                </View>
-                
-                {tab.badge !== undefined && (
-                  <View style={styles.badgeContainer}>
-                    <Text style={styles.badgeText}>{tab.badge}</Text>
+                <Icon 
+                  size={22} 
+                  color={isActive ? activeColor : inactiveColor} 
+                  strokeWidth={isActive ? 2.5 : 2}
+                />
+                {tab.badge !== undefined && tab.badge > 0 && (
+                  <View style={styles.badgeCircle}>
+                    <Text style={styles.badgeText}>{tab.badge > 9 ? '9+' : tab.badge}</Text>
                   </View>
                 )}
               </View>
@@ -134,8 +136,8 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab }) => {
                 style={[
                   styles.tabLabel, 
                   { 
-                    color: isActive ? (isDark ? '#F87171' : activeColor) : inactiveColor,
-                    fontWeight: isActive ? '800' : '600'
+                    color: isActive ? activeColor : inactiveColor,
+                    fontWeight: isActive ? '800' : '500',
                   }
                 ]}
               >
@@ -153,53 +155,43 @@ const styles = StyleSheet.create({
   navContainer: {
     borderTopWidth: 1,
     paddingTop: 8,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
     elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
   },
   tabsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
+    justifyContent: 'space-around',
     paddingHorizontal: 8,
   },
   tabBtn: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
-    minHeight: 48, // Ergonomia de toque recomendada
+    minWidth: 56,
+    minHeight: 46,
   },
   iconWrapper: {
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
+    width: 28,
+    height: 28,
   },
-  iconPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabLabel: {
-    fontSize: 11,
-    marginTop: 2,
-    letterSpacing: 0.1,
-  },
-  badgeContainer: {
+  badgeCircle: {
     position: 'absolute',
     top: -2,
-    right: 4,
+    right: -6,
     backgroundColor: '#DC2626',
-    borderRadius: 9,
+    borderRadius: 8,
     minWidth: 16,
     height: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
   },
@@ -207,5 +199,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 9,
     fontWeight: '900',
+  },
+  tabLabel: {
+    fontSize: 11,
+    marginTop: 2,
+    letterSpacing: 0.2,
   },
 });
