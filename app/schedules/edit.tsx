@@ -21,6 +21,7 @@ import { useApp } from '../../src/context/AppContext';
 import { Input } from '../../src/components/ui/Input';
 import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
+import { BottomNavBar } from '../../src/components/ui/BottomNavBar';
 import { Colors, getThemeColors } from '../../src/theme/colors';
 
 export default function ScheduleEditScreen() {
@@ -35,6 +36,7 @@ export default function ScheduleEditScreen() {
   } = useApp();
 
   const themeColors = getThemeColors(theme);
+  const isDark = theme === 'dark';
   const existingSchedule = schedules.find(s => s.id === id);
 
   const [title, setTitle] = useState(existingSchedule?.title || 'Escala: Culto de Domingo (19h)');
@@ -53,6 +55,18 @@ export default function ScheduleEditScreen() {
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const AVATAR_COLORS = ['#C5221F', '#2563EB', '#D97706', '#059669', '#7C3AED', '#DB2777', '#0891B2'];
+  const getAvatarColor = (index: number) => AVATAR_COLORS[index % AVATAR_COLORS.length];
+
+  const getNextDayOfWeek = (targetDay: number): string => {
+    const d = new Date();
+    const currentDay = d.getDay();
+    let diff = (targetDay - currentDay + 7) % 7;
+    if (diff === 0) diff = 7;
+    const target = new Date(d.getTime() + diff * 24 * 60 * 60 * 1000);
+    return target.toISOString().slice(0, 10);
+  };
 
   const getUserIdForMember = (userName: string): string => {
     const matched = profiles.find(p => p.full_name.toLowerCase() === userName.toLowerCase());
@@ -133,109 +147,187 @@ export default function ScheduleEditScreen() {
   };
 
   return (
-    <ScrollView 
-      style={[styles.container, { backgroundColor: themeColors.background }]} 
-      contentContainerStyle={styles.content}
-    >
-      <Text style={[styles.title, { color: themeColors.textPrimary }]}>
-        {existingSchedule ? 'Editar Escala do Ministério' : 'Criar Nova Escala'}
-      </Text>
-      <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
-        {currentUser?.ministry_name || 'Ministério'}: Defina os voluntários e suas funções no culto.
-      </Text>
-
-      <Input
-        label="Título da Escala *"
-        placeholder="Ex: Culto da Família - Louvor"
-        value={title}
-        onChangeText={setTitle}
-      />
-
-      <Input
-        label="Data do Culto (YYYY-MM-DD) *"
-        placeholder="2026-11-08"
-        value={eventDate}
-        onChangeText={setEventDate}
-      />
-
-      <Input
-        label="Orientações e Horário de Passagem *"
-        placeholder="Ex: Chegar às 17h30 para ensaio e oração. Traje: Preto."
-        value={notes}
-        onChangeText={setNotes}
-        multiline
-        numberOfLines={2}
-      />
-
-      {/* Adicionar Voluntário */}
-      <Card style={styles.addMemberCard}>
-        <Text style={[styles.addMemberTitle, { color: themeColors.textPrimary }]}>
-          + Escalar Voluntário
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <ScrollView 
+        style={styles.scrollArea} 
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.title, { color: themeColors.textPrimary }]}>
+          {existingSchedule ? 'Editar Escala do Ministério' : 'Criar Nova Escala'}
+        </Text>
+        <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
+          {currentUser?.ministry_name || 'Ministério'}: Defina os voluntários e suas funções no culto.
         </Text>
 
-        <View style={styles.addInputsRow}>
-          <View style={{ flex: 1 }}>
-            <Input
-              label="Nome do Voluntário"
-              placeholder="Ex: João Silva"
-              value={newMemberName}
-              onChangeText={setNewMemberName}
-            />
+        <Input
+          label="Título da Escala *"
+          placeholder="Ex: Culto da Família - Louvor"
+          value={title}
+          onChangeText={setTitle}
+        />
+
+        <View style={{ marginBottom: 12 }}>
+          <Text style={[styles.inputLabel, { color: themeColors.textPrimary }]}>Data do Culto *</Text>
+          <View style={styles.quickChipsRow}>
+            {[
+              { label: 'Próx. Domingo', val: getNextDayOfWeek(0) },
+              { label: 'Próx. Terça', val: getNextDayOfWeek(2) },
+              { label: 'Hoje', val: new Date().toISOString().slice(0, 10) },
+            ].map(chip => (
+              <TouchableOpacity
+                key={chip.label}
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setEventDate(chip.val);
+                }}
+                style={[
+                  styles.quickChipBtn,
+                  {
+                    backgroundColor: eventDate === chip.val ? Colors.primary.DEFAULT : (isDark ? '#1E293B' : '#F1F5F9'),
+                    borderColor: eventDate === chip.val ? Colors.primary.DEFAULT : themeColors.border,
+                  }
+                ]}
+              >
+                <Text style={[styles.quickChipText, { color: eventDate === chip.val ? '#FFFFFF' : themeColors.textPrimary }]}>
+                  {chip.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
-          <View style={{ flex: 1 }}>
-            <Input
-              label="Função no Culto"
-              placeholder="Ex: Vocal / Bateria / Porta"
-              value={newMemberRole}
-              onChangeText={setNewMemberRole}
-            />
-          </View>
+
+          <Input
+            label="Ou confirme o formato (AAAA-MM-DD) *"
+            placeholder="2026-11-08"
+            value={eventDate}
+            onChangeText={setEventDate}
+          />
         </View>
 
-        <Button
-          title="Adicionar à Escala"
-          onPress={handleAddMember}
-          variant="secondary"
-          size="sm"
-          icon={<UserPlus size={16} color="#FFFFFF" />}
+        <Input
+          label="Orientações e Horário de Passagem *"
+          placeholder="Ex: Chegar às 17h30 para ensaio e oração. Traje: Preto."
+          value={notes}
+          onChangeText={setNotes}
+          multiline
+          numberOfLines={2}
         />
-      </Card>
 
-      {/* Lista de Membros Escalados */}
-      <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
-        Voluntários Escalados ({members.length})
-      </Text>
+        {/* Adicionar Voluntário */}
+        <Card style={styles.addMemberCard}>
+          <Text style={[styles.addMemberTitle, { color: themeColors.textPrimary }]}>
+            + Escalar Voluntário
+          </Text>
 
-      {members.map((m, index) => (
-        <Card key={index} style={styles.memberCard}>
-          <View style={styles.memberRow}>
-            <View style={styles.memberInfo}>
-              <Text style={[styles.memberName, { color: themeColors.textPrimary }]}>{m.user_name}</Text>
-              <Text style={styles.memberRole}>{m.role_in_service}</Text>
+          <View style={styles.addInputsRow}>
+            <View style={{ flex: 1 }}>
+              <Input
+                label="Nome do Voluntário"
+                placeholder="Ex: João Silva"
+                value={newMemberName}
+                onChangeText={setNewMemberName}
+              />
             </View>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => handleRemoveMember(index)}
-              style={styles.deleteBtn}
-              accessibilityLabel="Remover voluntário"
-            >
-              <Trash2 size={18} color="#DC2626" />
-            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Input
+                label="Função no Culto"
+                placeholder="Ex: Vocal / Bateria / Som"
+                value={newMemberRole}
+                onChangeText={setNewMemberRole}
+              />
+            </View>
           </View>
-        </Card>
-      ))}
 
-      <Button
-        title="Salvar e Publicar Escala"
-        onPress={handleSave}
-        loading={loading}
-        variant="primary"
-        size="lg"
-        icon={<Save size={18} color="#FFFFFF" />}
-        style={{ marginTop: 16 }}
-      />
-    </ScrollView>
+          {/* Sugestões de Funções Rápidas */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.roleChipsRow}>
+            {['Vocal', 'Violão', 'Teclado', 'Bateria', 'Baixo', 'Recepção', 'Mídia / Som', 'Infantil', 'Intercessão'].map(role => (
+              <TouchableOpacity
+                key={role}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setNewMemberRole(role);
+                }}
+                style={[
+                  styles.roleChip,
+                  {
+                    backgroundColor: newMemberRole === role ? Colors.primary.DEFAULT : (isDark ? '#1E293B' : '#F1F5F9'),
+                    borderColor: newMemberRole === role ? Colors.primary.DEFAULT : themeColors.border,
+                  }
+                ]}
+              >
+                <Text style={[styles.roleChipText, { color: newMemberRole === role ? '#FFFFFF' : themeColors.textPrimary }]}>
+                  {role}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <Button
+            title="Adicionar à Escala"
+            onPress={handleAddMember}
+            variant="secondary"
+            size="sm"
+            icon={<UserPlus size={16} color="#FFFFFF" />}
+            style={{ marginTop: 10 }}
+          />
+        </Card>
+
+        {/* Lista de Membros Escalados */}
+        <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
+          Voluntários Escalados ({members.length})
+        </Text>
+
+        {members.map((m, index) => {
+          const initials = m.user_name
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map(p => p[0].toUpperCase())
+            .join('') || 'V';
+
+          return (
+            <Card key={index} style={styles.memberCard}>
+              <View style={styles.memberRow}>
+                <View style={styles.memberLeft}>
+                  <View style={[styles.avatarCircle, { backgroundColor: getAvatarColor(index) }]}>
+                    <Text style={styles.avatarInitials}>{initials}</Text>
+                  </View>
+
+                  <View style={styles.memberInfo}>
+                    <Text style={[styles.memberName, { color: themeColors.textPrimary }]}>{m.user_name}</Text>
+                    <Text style={styles.memberRole}>{m.role_in_service}</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleRemoveMember(index)}
+                  style={styles.deleteBtn}
+                  accessibilityLabel="Remover voluntário"
+                >
+                  <Trash2 size={18} color="#DC2626" />
+                </TouchableOpacity>
+              </View>
+            </Card>
+          );
+        })}
+
+        <Button
+          title="Salvar e Publicar Escala"
+          onPress={handleSave}
+          loading={loading}
+          variant="primary"
+          size="lg"
+          icon={<Save size={18} color="#FFFFFF" />}
+          style={{ marginTop: 16 }}
+        />
+      </ScrollView>
+
+      {/* Barra de Navegação Inferior Ergonômica Fixa */}
+      <BottomNavBar activeTab="escalas" />
+    </View>
   );
 }
 
@@ -243,9 +335,52 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollArea: {
+    flex: 1,
+  },
   content: {
     padding: 16,
     paddingBottom: 40,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  quickChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  quickChipBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight: 38,
+    justifyContent: 'center',
+  },
+  quickChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  roleChipsRow: {
+    gap: 8,
+    paddingVertical: 8,
+  },
+  roleChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleChipText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   title: {
     fontSize: 22,
@@ -283,6 +418,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  memberLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
   },
   memberInfo: {
     flex: 1,

@@ -26,6 +26,7 @@ import { Card } from '../src/components/ui/Card';
 import { Badge } from '../src/components/ui/Badge';
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
+import { BottomNavBar } from '../src/components/ui/BottomNavBar';
 import { EventType } from '../src/types';
 import { Colors, getThemeColors } from '../src/theme/colors';
 import { isValidISODate, formatDateBR } from '../src/utils/formatters';
@@ -63,6 +64,37 @@ export default function CalendarScreen() {
   const [location, setLocation] = useState('Templo Principal');
   const [eventType, setEventType] = useState<EventType>('culto_fixo');
   const [loading, setLoading] = useState(false);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
+
+  const getNextDayOfWeek = (targetDay: number): string => {
+    const d = new Date();
+    const currentDay = d.getDay();
+    let diff = (targetDay - currentDay + 7) % 7;
+    if (diff === 0) diff = 7;
+    const target = new Date(d.getTime() + diff * 24 * 60 * 60 * 1000);
+    return target.toISOString().slice(0, 10);
+  };
+
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+  const monthNames = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const daysList = Array.from({ length: daysInMonth }, (_, i) => {
+    const day = i + 1;
+    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dateObj = new Date(currentYear, currentMonth, day);
+    const dOfWeek = dateObj.getDay();
+    const dayLetter = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'][dOfWeek];
+    const hasEvents = events.some(e => e.event_date === dateStr);
+    return { day, dateStr, dayLetter, dOfWeek, hasEvents };
+  });
+
+  const displayedEvents = selectedCalendarDate 
+    ? events.filter(e => e.event_date === selectedCalendarDate)
+    : events;
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -139,20 +171,115 @@ export default function CalendarScreen() {
   };
 
   return (
-    <ScrollView 
-      style={[styles.container, { backgroundColor: themeColors.background }]} 
-      contentContainerStyle={styles.content}
-    >
-      <View style={styles.header}>
-        <View style={styles.badgeRow}>
-          <CalendarIcon size={18} color="#DC2626" />
-          <Text style={styles.badgeText}>CALENDÁRIO OFICIAL DA IGREJA</Text>
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <ScrollView 
+        style={styles.scrollArea} 
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <View style={styles.badgeRow}>
+            <CalendarIcon size={18} color="#DC2626" />
+            <Text style={styles.badgeText}>CALENDÁRIO OFICIAL DA IGREJA</Text>
+          </View>
+          <Text style={[styles.title, { color: themeColors.textPrimary }]}>Cultos & Programação</Text>
+          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
+            Visualização unificada de cultos frequentes, vigílias, conferências e eventos da Igreja Metodista Aliado.
+          </Text>
         </View>
-        <Text style={[styles.title, { color: themeColors.textPrimary }]}>Cultos & Programação</Text>
-        <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
-          Visualização unificada de cultos frequentes, vigílias, conferências e eventos da Igreja Metodista Aliado.
-        </Text>
-      </View>
+
+        {/* Grade de Calendário Mensal Visual */}
+        <View style={[styles.calendarMonthCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+          <View style={styles.calendarMonthHeader}>
+            <Text style={[styles.calendarMonthTitle, { color: themeColors.textPrimary }]}>
+              {monthNames[currentMonth]} {currentYear}
+            </Text>
+            <Text style={[styles.calendarMonthSub, { color: themeColors.textSecondary }]}>
+              Toque em um dia para filtrar a programação
+            </Text>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.calendarDaysScroll}>
+            {daysList.map(item => {
+              const isSelected = selectedCalendarDate === item.dateStr;
+              const isToday = item.dateStr === new Date().toISOString().slice(0, 10);
+
+              return (
+                <TouchableOpacity
+                  key={item.dateStr}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setSelectedCalendarDate(isSelected ? null : item.dateStr);
+                  }}
+                  style={[
+                    styles.calendarDayCell,
+                    {
+                      backgroundColor: isSelected 
+                        ? Colors.primary.DEFAULT 
+                        : isToday 
+                        ? (isDark ? '#1E293B' : '#FEF2F2')
+                        : 'transparent',
+                      borderColor: isSelected 
+                        ? Colors.primary.DEFAULT 
+                        : isToday 
+                        ? Colors.primary.DEFAULT 
+                        : themeColors.border,
+                    }
+                  ]}
+                >
+                  <Text 
+                    style={[
+                      styles.calendarDayLetter, 
+                      { color: isSelected ? '#FFFFFF' : themeColors.textSecondary }
+                    ]}
+                  >
+                    {item.dayLetter}
+                  </Text>
+                  <Text 
+                    style={[
+                      styles.calendarDayNumber, 
+                      { 
+                        color: isSelected 
+                          ? '#FFFFFF' 
+                          : isToday 
+                          ? Colors.primary.DEFAULT 
+                          : themeColors.textPrimary,
+                        fontWeight: isSelected || isToday ? '800' : '600'
+                      }
+                    ]}
+                  >
+                    {item.day}
+                  </Text>
+                  
+                  {item.hasEvents && (
+                    <View 
+                      style={[
+                        styles.calendarEventDot, 
+                        { backgroundColor: isSelected ? '#FFFFFF' : Colors.primary.DEFAULT }
+                      ]} 
+                    />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {selectedCalendarDate && (
+            <View style={[styles.activeFilterRow, { borderTopColor: themeColors.border }]}>
+              <Text style={[styles.activeFilterText, { color: themeColors.textPrimary }]}>
+                Exibindo cultos de: <Text style={{ fontWeight: '800' }}>{formatDateBR(selectedCalendarDate)}</Text>
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setSelectedCalendarDate(null)}
+                style={styles.clearFilterBtn}
+              >
+                <Text style={styles.clearFilterText}>Ver Todos</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
       {/* Ações da Secretaria / Pastor */}
       {isSecretariaOrPastor && (
@@ -272,12 +399,44 @@ export default function CalendarScreen() {
               </View>
             </View>
           ) : (
-            <Input
-              label="Data do Evento (YYYY-MM-DD) *"
-              placeholder="Ex: 2026-11-20"
-              value={eventDate}
-              onChangeText={setEventDate}
-            />
+            <View style={{ marginBottom: 12 }}>
+              <Text style={[styles.inputLabel, { color: themeColors.textPrimary }]}>Data do Evento *</Text>
+              <View style={styles.quickChipsRow}>
+                {[
+                  { label: 'Hoje', val: new Date().toISOString().slice(0, 10) },
+                  { label: 'Amanhã', val: new Date(Date.now() + 86400000).toISOString().slice(0, 10) },
+                  { label: 'Próx. Domingo', val: getNextDayOfWeek(0) },
+                  { label: 'Próx. Terça', val: getNextDayOfWeek(2) },
+                ].map(chip => (
+                  <TouchableOpacity
+                    key={chip.label}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setEventDate(chip.val);
+                    }}
+                    style={[
+                      styles.quickChipBtn,
+                      {
+                        backgroundColor: eventDate === chip.val ? Colors.primary.DEFAULT : (isDark ? '#1E293B' : '#F1F5F9'),
+                        borderColor: eventDate === chip.val ? Colors.primary.DEFAULT : themeColors.border,
+                      }
+                    ]}
+                  >
+                    <Text style={[styles.quickChipText, { color: eventDate === chip.val ? '#FFFFFF' : themeColors.textPrimary }]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Input
+                label="Ou informe outra data (AAAA-MM-DD) *"
+                placeholder="Ex: 2026-11-20"
+                value={eventDate}
+                onChangeText={setEventDate}
+              />
+            </View>
           )}
 
           <View style={styles.timeRow}>
@@ -319,131 +478,145 @@ export default function CalendarScreen() {
       {/* CONTEÚDO DA ABA 1: AGENDA PRÓXIMA (COM OPÇÃO DE CANCELAMENTO INDIVIDUAL) */}
       {activeTab === 'agenda' && (
         <View style={styles.listContainer}>
-          {events.map(ev => {
-            const isCancelled = ev.is_cancelled;
-            return (
-              <Card
-                key={ev.id}
-                style={[
-                  styles.eventCard, 
-                  isCancelled ? {
-                    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FFF5F5',
-                    borderColor: isDark ? 'rgba(248, 113, 113, 0.35)' : '#FECACA',
-                  } : null
-                ]}
-                accentColor={isCancelled ? (isDark ? '#F87171' : '#DC2626') : Colors.primary.DEFAULT}
-              >
-                {/* Header do Card */}
-                <View style={styles.eventCardHeader}>
-                  <Badge
-                    label={isCancelled ? 'CANCELADO NESTA DATA' : ev.event_type === 'culto_fixo' ? 'CULTO FIXO' : 'EVENTO ESPECIAL'}
-                    bgColor={
-                      isCancelled 
-                        ? themeColors.priority.urgente.bg 
-                        : ev.event_type === 'culto_fixo' 
-                        ? themeColors.priority.media.bg 
-                        : themeColors.priority.alta.bg
-                    }
-                    textColor={
-                      isCancelled 
-                        ? themeColors.priority.urgente.text 
-                        : ev.event_type === 'culto_fixo' 
-                        ? themeColors.priority.media.text 
-                        : themeColors.priority.alta.text
-                    }
-                  />
-
-                  <Text style={[styles.eventDateText, { color: themeColors.textSecondary }]}>
-                    {ev.event_date}
-                  </Text>
-                </View>
-
-                <Text style={[styles.eventTitle, { color: themeColors.textPrimary }, isCancelled ? styles.strikethrough : null]}>
-                  {ev.title}
-                </Text>
-
-                {ev.description && (
-                  <Text style={[styles.eventDesc, { color: themeColors.textSecondary }]}>{ev.description}</Text>
-                )}
-
-                {/* Justificativa se cancelado */}
-                {isCancelled && (
-                  <View 
-                    style={[
-                      styles.cancelReasonBox,
-                      {
-                        backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2',
-                        borderColor: isDark ? 'rgba(248, 113, 113, 0.35)' : '#FECACA',
-                        borderWidth: 1,
+          {displayedEvents.length === 0 ? (
+            <Card style={styles.emptyCard}>
+              <CheckCircle2 size={36} color="#16A34A" />
+              <Text style={[styles.emptyTitle, { color: themeColors.textPrimary }]}>
+                Nenhum culto agendado para esta data
+              </Text>
+              <Text style={[styles.emptySub, { color: themeColors.textSecondary }]}>
+                {selectedCalendarDate 
+                  ? 'Não há programação registrada para o dia selecionado. Toque em "Ver Todos" no calendário acima.'
+                  : 'Nenhum evento ou culto especial na agenda próxima.'}
+              </Text>
+            </Card>
+          ) : (
+            displayedEvents.map(ev => {
+              const isCancelled = ev.is_cancelled;
+              return (
+                <Card
+                  key={ev.id}
+                  style={[
+                    styles.eventCard, 
+                    isCancelled ? {
+                      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FFF5F5',
+                      borderColor: isDark ? 'rgba(248, 113, 113, 0.35)' : '#FECACA',
+                    } : null
+                  ]}
+                  accentColor={isCancelled ? (isDark ? '#F87171' : '#DC2626') : Colors.primary.DEFAULT}
+                >
+                  {/* Header do Card */}
+                  <View style={styles.eventCardHeader}>
+                    <Badge
+                      label={isCancelled ? 'PAUSADO NESTA DATA' : ev.event_type === 'culto_fixo' ? 'CULTO FIXO' : 'EVENTO ESPECIAL'}
+                      bgColor={
+                        isCancelled 
+                          ? themeColors.priority.urgente.bg 
+                          : ev.event_type === 'culto_fixo' 
+                          ? themeColors.priority.media.bg 
+                          : themeColors.priority.alta.bg
                       }
-                    ]}
-                  >
-                    <AlertCircle size={16} color={isDark ? '#F87171' : '#DC2626'} />
-                    <Text style={[styles.cancelReasonText, { color: isDark ? '#F87171' : '#DC2626' }]}>
-                      Motivo: {ev.cancelled_reason || 'Cancelado excepcionalmente.'}
+                      textColor={
+                        isCancelled 
+                          ? themeColors.priority.urgente.text 
+                          : ev.event_type === 'culto_fixo' 
+                          ? themeColors.priority.media.text 
+                          : themeColors.priority.alta.text
+                      }
+                    />
+
+                    <Text style={[styles.eventDateText, { color: themeColors.textSecondary }]}>
+                      {formatDateBR(ev.event_date)}
                     </Text>
                   </View>
-                )}
 
-                {/* Detalhes de Horário e Local */}
-                <View style={[styles.eventInfoBox, { borderTopColor: themeColors.cardBorder }]}>
-                  <View style={styles.infoRow}>
-                    <Clock size={14} color={Colors.primary.DEFAULT} />
-                    <Text style={[styles.infoText, { color: themeColors.textPrimary }]}>
-                      {ev.start_time} às {ev.end_time || '21:00'}
-                    </Text>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <MapPin size={14} color={themeColors.textSecondary} />
-                    <Text style={[styles.infoText, { color: themeColors.textSecondary }]}>{ev.location}</Text>
-                  </View>
-                </View>
+                  <Text style={[styles.eventTitle, { color: themeColors.textPrimary }, isCancelled ? styles.strikethrough : null]}>
+                    {ev.title}
+                  </Text>
 
-                {/* Botão de Cancelamento Individual da Secretaria / Pastor */}
-                {isSecretariaOrPastor && (
-                  <View style={[styles.cardActionsRow, { borderTopColor: themeColors.cardBorder }]}>
-                    {isCancelled ? (
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        onPress={() => handleRestoreEvent(ev.id)}
-                        style={[
-                          styles.restoreBtn,
-                          {
-                            backgroundColor: themeColors.actions.successActionBg,
-                            borderColor: themeColors.actions.successActionBorder,
-                            borderWidth: 1,
-                          }
-                        ]}
-                      >
-                        <RotateCcw size={14} color={themeColors.actions.successActionText} />
-                        <Text style={[styles.restoreBtnText, { color: themeColors.actions.successActionText }]}>
-                          Reativar Culto Nesta Data
-                        </Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        onPress={() => handleCancelEvent(ev.id, ev.title)}
-                        style={[
-                          styles.cancelBtn,
-                          {
-                            backgroundColor: themeColors.actions.destructiveBg,
-                            borderColor: themeColors.actions.destructiveBorder,
-                            borderWidth: 1,
-                          }
-                        ]}
-                      >
-                        <Ban size={14} color={themeColors.actions.destructiveText} />
-                        <Text style={[styles.cancelBtnText, { color: themeColors.actions.destructiveText }]}>
-                          Cancelar Esta Data Individualmente
-                        </Text>
-                      </TouchableOpacity>
-                    )}
+                  {ev.description && (
+                    <Text style={[styles.eventDesc, { color: themeColors.textSecondary }]}>{ev.description}</Text>
+                  )}
+
+                  {/* Justificativa se cancelado */}
+                  {isCancelled && (
+                    <View 
+                      style={[
+                        styles.cancelReasonBox,
+                        {
+                          backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2',
+                          borderColor: isDark ? 'rgba(248, 113, 113, 0.35)' : '#FECACA',
+                          borderWidth: 1,
+                        }
+                      ]}
+                    >
+                      <AlertCircle size={16} color={isDark ? '#F87171' : '#DC2626'} />
+                      <Text style={[styles.cancelReasonText, { color: isDark ? '#F87171' : '#DC2626' }]}>
+                        Motivo: {ev.cancelled_reason || 'Pausado excepcionalmente.'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Detalhes de Horário e Local */}
+                  <View style={[styles.eventInfoBox, { borderTopColor: themeColors.cardBorder }]}>
+                    <View style={styles.infoRow}>
+                      <Clock size={14} color={Colors.primary.DEFAULT} />
+                      <Text style={[styles.infoText, { color: themeColors.textPrimary }]}>
+                        {ev.start_time} às {ev.end_time || '21:00'}
+                      </Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <MapPin size={14} color={themeColors.textSecondary} />
+                      <Text style={[styles.infoText, { color: themeColors.textSecondary }]}>{ev.location}</Text>
+                    </View>
                   </View>
-                )}
-              </Card>
-            );
-          })}
+
+                  {/* Botão de Cancelamento Individual da Secretaria / Pastor */}
+                  {isSecretariaOrPastor && (
+                    <View style={[styles.cardActionsRow, { borderTopColor: themeColors.cardBorder }]}>
+                      {isCancelled ? (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => handleRestoreEvent(ev.id)}
+                          style={[
+                            styles.restoreBtn,
+                            {
+                              backgroundColor: themeColors.actions.successActionBg,
+                              borderColor: themeColors.actions.successActionBorder,
+                              borderWidth: 1,
+                            }
+                          ]}
+                        >
+                          <RotateCcw size={14} color={themeColors.actions.successActionText} />
+                          <Text style={[styles.restoreBtnText, { color: themeColors.actions.successActionText }]}>
+                            Reativar Culto Nesta Data
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => handleCancelEvent(ev.id, ev.title)}
+                          style={[
+                            styles.cancelBtn,
+                            {
+                              backgroundColor: themeColors.actions.destructiveBg,
+                              borderColor: themeColors.actions.destructiveBorder,
+                              borderWidth: 1,
+                            }
+                          ]}
+                        >
+                          <AlertCircle size={14} color={themeColors.actions.destructiveText} />
+                          <Text style={[styles.cancelBtnText, { color: themeColors.actions.destructiveText }]}>
+                            Pausar Culto Nesta Data
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </Card>
+              );
+            })
+          )}
         </View>
       )}
 
@@ -478,7 +651,11 @@ export default function CalendarScreen() {
           ))}
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+
+      {/* Barra de Navegação Inferior Ergonômica Fixa */}
+      <BottomNavBar activeTab="agenda" />
+    </View>
   );
 }
 
@@ -486,9 +663,119 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollArea: {
+    flex: 1,
+  },
   content: {
     padding: 16,
     paddingBottom: 40,
+  },
+  calendarMonthCard: {
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  calendarMonthHeader: {
+    marginBottom: 10,
+  },
+  calendarMonthTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  calendarMonthSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  calendarDaysScroll: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  calendarDayCell: {
+    width: 44,
+    height: 58,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  calendarDayLetter: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  calendarDayNumber: {
+    fontSize: 15,
+  },
+  calendarEventDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginTop: 4,
+  },
+  activeFilterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  activeFilterText: {
+    fontSize: 12,
+  },
+  clearFilterBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+    borderRadius: 6,
+  },
+  clearFilterText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  quickChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  quickChipBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight: 38,
+    justifyContent: 'center',
+  },
+  quickChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  emptyCard: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  emptySub: {
+    fontSize: 13,
+    marginTop: 4,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   header: {
     marginBottom: 16,

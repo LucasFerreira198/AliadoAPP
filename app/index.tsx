@@ -40,6 +40,7 @@ import { UpdateBanner } from '../src/components/updates/UpdateBanner';
 import { Button } from '../src/components/ui/Button';
 import { Card } from '../src/components/ui/Card';
 import { Badge } from '../src/components/ui/Badge';
+import { BottomNavBar } from '../src/components/ui/BottomNavBar';
 import { Colors, getThemeColors } from '../src/theme/colors';
 import { formatCurrency, formatDateBR } from '../src/utils/formatters';
 import LoginScreen from './login';
@@ -204,8 +205,8 @@ export default function HomeScreen() {
               />
             </View>
 
-            {/* Atalhos Rápidos Pastorais */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.shortcutsScroll}>
+            {/* Atalhos Rápidos Pastorais em Grade Estável (Sem conflito de rolagem) */}
+            <View style={styles.shortcutsGrid}>
               {/* Central de Aniversariantes */}
               <TouchableOpacity
                 activeOpacity={0.8}
@@ -219,7 +220,7 @@ export default function HomeScreen() {
                 <View style={[styles.shortcutIconBox, { backgroundColor: '#FEE2E2' }]}>
                   <Cake size={20} color="#DC2626" />
                 </View>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Aniversários</Text>
                   <Text style={styles.shortcutSub}>
                     {todayBirthdays.length > 0 ? `🎉 ${todayBirthdays.length} hoje!` : 'Ver do mês'}
@@ -236,10 +237,10 @@ export default function HomeScreen() {
                 <View style={[styles.shortcutIconBox, { backgroundColor: '#DCFCE7' }]}>
                   <Landmark size={20} color="#059669" />
                 </View>
-                <View>
-                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>MAAD (Finanças)</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>MAAD</Text>
                   <Text style={styles.shortcutSub}>
-                    Saldo: R$ {cashSummary.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                    R$ {cashSummary.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -253,9 +254,9 @@ export default function HomeScreen() {
                 <View style={[styles.shortcutIconBox, { backgroundColor: '#FEF3C7' }]}>
                   <Calendar size={20} color="#D97706" />
                 </View>
-                <View>
-                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Agenda & Cultos</Text>
-                  <Text style={styles.shortcutSub}>Ver programação</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Agenda</Text>
+                  <Text style={styles.shortcutSub}>Programação</Text>
                 </View>
               </TouchableOpacity>
 
@@ -268,12 +269,12 @@ export default function HomeScreen() {
                 <View style={[styles.shortcutIconBox, { backgroundColor: '#DBEAFE' }]}>
                   <Bell size={20} color="#2563EB" />
                 </View>
-                <View>
-                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Avisos Pastorais</Text>
-                  <Text style={styles.shortcutSub}>Publicar comunicado</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Mural</Text>
+                  <Text style={styles.shortcutSub}>Comunicados</Text>
                 </View>
               </TouchableOpacity>
-            </ScrollView>
+            </View>
 
             {/* ORÇAMENTOS PENDENTES DE ANÁLISE PASTORAL (LÍDER -> PASTOR -> MAAD) */}
             {budgetsPendingPastor.length > 0 && (
@@ -709,12 +710,27 @@ export default function HomeScreen() {
                     {sch.notes && <Text style={[styles.scheduleNotes, { color: themeColors.textSecondary }]}>{sch.notes}</Text>}
 
                     <View style={styles.membersList}>
-                      {sch.members.map(member => (
-                        <View key={member.id} style={styles.memberRow}>
-                          <View>
-                            <Text style={[styles.memberName, { color: themeColors.textPrimary }]}>{member.user_name}</Text>
-                            <Text style={styles.memberRole}>{member.role_in_service}</Text>
-                          </View>
+                      {sch.members.map((member, mIdx) => {
+                        const initials = member.user_name
+                          .split(' ')
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map(p => p[0].toUpperCase())
+                          .join('') || 'V';
+                        const avatarColors = ['#C5221F', '#2563EB', '#D97706', '#059669', '#7C3AED'];
+                        const avatarBg = avatarColors[mIdx % avatarColors.length];
+
+                        return (
+                          <View key={member.id} style={styles.memberRow}>
+                            <View style={styles.memberLeft}>
+                              <View style={[styles.avatarCircleSmall, { backgroundColor: avatarBg }]}>
+                                <Text style={styles.avatarInitialsSmall}>{initials}</Text>
+                              </View>
+                              <View>
+                                <Text style={[styles.memberName, { color: themeColors.textPrimary }]}>{member.user_name}</Text>
+                                <Text style={styles.memberRole}>{member.role_in_service}</Text>
+                              </View>
+                            </View>
 
                           <View style={styles.memberStatusActions}>
                             {member.status === 'confirmado' ? (
@@ -750,8 +766,9 @@ export default function HomeScreen() {
                             )}
                           </View>
                         </View>
-                      ))}
-                    </View>
+                      );
+                    })}
+                  </View>
                   </Card>
                 ))}
               </View>
@@ -839,6 +856,9 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Barra de Navegação Inferior Ergonômica Fixa */}
+      <BottomNavBar activeTab="inicio" />
     </View>
   );
 }
@@ -918,18 +938,21 @@ const styles = StyleSheet.create({
   newGoalBtn: {
     minHeight: 50,
   },
-  shortcutsScroll: {
+  shortcutsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
     marginBottom: 16,
   },
   shortcutCard: {
     borderRadius: 14,
     padding: 12,
-    marginRight: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    minWidth: 155,
+    flex: 1,
+    minWidth: '47%',
   },
   shortcutCardHighlight: {
     borderColor: '#DC2626',
@@ -1275,6 +1298,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 4,
+  },
+  memberLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  avatarCircleSmall: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitialsSmall: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
   },
   memberName: {
     fontSize: 14,

@@ -29,6 +29,7 @@ import { Card } from '../src/components/ui/Card';
 import { Badge } from '../src/components/ui/Badge';
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
+import { BottomNavBar } from '../src/components/ui/BottomNavBar';
 import { WhatsAppQuickAction } from '../src/components/actions/WhatsAppQuickAction';
 import { Colors, getThemeColors } from '../src/theme/colors';
 import { CashFlowType, CashFlowCategory } from '../src/types';
@@ -115,10 +116,12 @@ export default function MaadScreen() {
   };
 
   return (
-    <ScrollView 
-      style={[styles.container, { backgroundColor: themeColors.background }]} 
-      contentContainerStyle={styles.content}
-    >
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <ScrollView 
+        style={styles.scrollArea} 
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
       {/* Cabeçalho MAAD */}
       <View style={styles.header}>
         <View style={styles.maadBadge}>
@@ -478,12 +481,19 @@ export default function MaadScreen() {
           })}
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+
+      {/* Barra de Navegação Inferior Ergonômica Fixa */}
+      <BottomNavBar activeTab="maad" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  scrollArea: {
     flex: 1,
   },
   content: {

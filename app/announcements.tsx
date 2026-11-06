@@ -14,6 +14,7 @@ import { Card } from '../src/components/ui/Card';
 import { Badge } from '../src/components/ui/Badge';
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
+import { BottomNavBar } from '../src/components/ui/BottomNavBar';
 import { Colors, getThemeColors } from '../src/theme/colors';
 
 export default function AnnouncementsScreen() {
@@ -52,10 +53,12 @@ export default function AnnouncementsScreen() {
   };
 
   return (
-    <ScrollView 
-      style={[styles.container, { backgroundColor: themeColors.background }]} 
-      contentContainerStyle={styles.scrollContent}
-    >
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <ScrollView 
+        style={styles.scrollArea} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
       <Text style={[styles.title, { color: themeColors.textPrimary }]}>Mural de Avisos Pastorais</Text>
       <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
         Comunicados oficiais da liderança pastoral para todos os ministérios da Igreja Metodista Aliado.
@@ -155,12 +158,19 @@ export default function AnnouncementsScreen() {
           );
         })}
       </View>
-    </ScrollView>
+      </ScrollView>
+
+      {/* Barra de Navegação Inferior Ergonômica Fixa */}
+      <BottomNavBar activeTab="mural" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  scrollArea: {
     flex: 1,
   },
   scrollContent: {
