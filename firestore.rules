@@ -1,0 +1,636 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: profiles
+    // Document ID: {userId} (matches Firebase Auth UID or system UUID)
+    // Fields:
+    //   - id: string (optional, <= 128 chars, matches doc ID) [immutable]
+    //   - full_name: string (required, 1-100 chars)
+    //   - email: string (required, valid email, <= 100 chars)
+    //   - phone: string (required, 8-25 chars)
+    //   - birth_date: string (optional, <= 15 chars, YYYY-MM-DD)
+    //   - role: string (required, one of: admin, pastor, secretaria, maad, leader, volunteer, member)
+    //   - avatar_url: string (optional, URL, <= 1000 chars)
+    //   - avatarUrl: string (optional, URL, <= 1000 chars)
+    //   - expo_push_token: string (optional, <= 256 chars)
+    //   - ministry_id: string (optional, <= 128 chars)
+    //   - ministry_name: string (optional, <= 100 chars)
+    //   - is_active: bool (optional)
+    //
+    // Collection: ministries
+    // Document ID: {ministryId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - name: string (required, 1-100 chars)
+    //   - description: string (required, <= 1000 chars)
+    //   - color_hex: string (required, <= 20 chars)
+    //   - icon_name: string (required, <= 50 chars)
+    //   - leader_id: string (optional, <= 128 chars)
+    //   - leader_name: string (optional, <= 100 chars)
+    //   - leader_phone: string (optional, <= 25 chars)
+    //   - member_count: number (optional, >= 0)
+    //
+    // Collection: schedules
+    // Document ID: {scheduleId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - ministry_id: string (required, <= 128 chars) [immutable]
+    //   - ministry_name: string (optional, <= 100 chars)
+    //   - ministry_color: string (optional, <= 20 chars)
+    //   - title: string (required, 1-200 chars)
+    //   - event_date: string (required, <= 40 chars)
+    //   - notes: string (optional, <= 1000 chars)
+    //   - members: list (required, <= 100 items)
+    //   - created_by: string (optional, <= 128 chars)
+    //
+    // Collection: goals
+    // Document ID: {goalId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - created_by: string (required, <= 128 chars)
+    //   - title: string (required, 1-200 chars)
+    //   - description: string (required, 1-2000 chars)
+    //   - priority: string (required, one of: baixa, media, alta, urgente)
+    //   - due_date: string (required, <= 40 chars)
+    //   - created_at: string (required, <= 40 chars) [immutable]
+    //   - assignments: list (optional, <= 50 items)
+    //
+    // Collection: reports
+    // Document ID: {reportId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - assignment_id: string (required, <= 128 chars) [immutable]
+    //   - author_id: string (required, <= 128 chars) [immutable]
+    //   - author_name: string (optional, <= 100 chars)
+    //   - notes: string (required, 1-5000 chars)
+    //   - status: string (required, one of: enviado, aprovado, ajustes_solicitados)
+    //   - pastoral_feedback: string (optional, <= 2000 chars)
+    //   - created_at: string (required, <= 40 chars) [immutable]
+    //   - media: list (optional, <= 20 items)
+    //
+    // Collection: budgets
+    // Document ID: {budgetId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - ministry_id: string (required, <= 128 chars) [immutable]
+    //   - ministry_name: string (optional, <= 100 chars)
+    //   - requested_by: string (required, <= 128 chars) [immutable]
+    //   - requester_name: string (required, 1-100 chars)
+    //   - requester_phone: string (optional, <= 25 chars)
+    //   - title: string (required, 1-200 chars)
+    //   - description: string (required, 1-2000 chars)
+    //   - amount: number (required, > 0)
+    //   - status: string (required, one of: aguardando_pastor, rejeitado_pastor, encaminhado_maad, aprovado_maad, rejeitado_maad, approved, rejected, pending)
+    //   - pastoral_notes: string (optional, <= 2000 chars)
+    //   - maad_notes: string (optional, <= 2000 chars)
+    //   - created_at: string (required, <= 40 chars) [immutable]
+    //   - updated_at: string (optional, <= 40 chars)
+    //
+    // Collection: ministry_expenses
+    // Document ID: {expenseId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - ministry_id: string (required, <= 128 chars) [immutable]
+    //   - ministry_name: string (optional, <= 100 chars)
+    //   - reported_by: string (required, <= 128 chars) [immutable]
+    //   - reporter_name: string (optional, <= 100 chars)
+    //   - reporter_phone: string (optional, <= 25 chars)
+    //   - related_goal_id: string (optional, <= 128 chars)
+    //   - related_goal_title: string (optional, <= 200 chars)
+    //   - description: string (required, 1-2000 chars)
+    //   - amount: number (required, > 0)
+    //   - expense_date: string (required, <= 40 chars)
+    //   - receipt_url: string (optional, <= 1000 chars)
+    //   - status: string (required, one of: pendente_aprovacao, aprovado, rejeitado, approved, rejected)
+    //   - created_at: string (required, <= 40 chars) [immutable]
+    //
+    // Collection: cash_transactions
+    // Document ID: {transactionId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - type: string (required, one of: entrada, saida)
+    //   - category: string (required, one of: dizimo, oferta, doacao, campanha, despesa_fixa, orcamento_ministerio, manutencao, outro)
+    //   - description: string (required, 1-500 chars)
+    //   - amount: number (required, > 0)
+    //   - date: string (required, <= 40 chars)
+    //   - related_ministry_id: string (optional, <= 128 chars)
+    //   - related_budget_id: string (optional, <= 128 chars)
+    //   - receipt_url: string (optional, <= 1000 chars)
+    //   - registered_by: string (required, <= 128 chars) [immutable]
+    //   - registered_by_name: string (optional, <= 100 chars)
+    //   - created_at: string (required, <= 40 chars) [immutable]
+    //
+    // Collection: announcements
+    // Document ID: {announcementId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - author_id: string (required, <= 128 chars)
+    //   - author_name: string (required, 1-100 chars)
+    //   - title: string (required, 1-200 chars)
+    //   - content: string (required, 1-5000 chars)
+    //   - priority: string (required, one of: normal, urgente)
+    //   - created_at: string (required, <= 40 chars) [immutable]
+    //
+    // Collection: church_events
+    // Document ID: {eventId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - title: string (required, 1-200 chars)
+    //   - description: string (optional, <= 2000 chars)
+    //   - event_date: string (required, <= 40 chars)
+    //   - start_time: string (required, <= 20 chars)
+    //   - end_time: string (optional, <= 20 chars)
+    //   - location: string (required, 1-200 chars)
+    //   - event_type: string (required, one of: culto_fixo, evento_especial, confraternizacao)
+    //   - is_cancelled: bool (optional)
+    //   - cancelled_reason: string (optional, <= 500 chars)
+    //   - recurring_schedule_id: string (optional, <= 128 chars)
+    //   - created_by: string (optional, <= 128 chars)
+    //   - created_by_name: string (optional, <= 100 chars)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/profiles/$(request.auth.uid));
+    }
+
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/profiles/$(request.auth.uid));
+    }
+
+    // Role-based helper functions using custom token claims, bootstrap verified emails, or cached Firestore profile lookup
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'admin' ||
+        request.auth.token.email == 'admin@metodistaaliado.com.br' ||
+        (hasUserDoc() && getUserDoc().data.role == 'admin')
+      );
+    }
+
+    function isPastor() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'pastor' ||
+        request.auth.token.email == 'pastor@metodistaaliado.com.br' ||
+        (hasUserDoc() && getUserDoc().data.role == 'pastor')
+      );
+    }
+
+    function isMaad() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'maad' ||
+        request.auth.token.email == 'maad@metodistaaliado.com.br' ||
+        (hasUserDoc() && getUserDoc().data.role == 'maad')
+      );
+    }
+
+    function isSecretaria() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'secretaria' ||
+        request.auth.token.email == 'secretaria@metodistaaliado.com.br' ||
+        (hasUserDoc() && getUserDoc().data.role == 'secretaria')
+      );
+    }
+
+    function isPastorOrAdmin() {
+      return isAdmin() || isPastor();
+    }
+
+    function isMaadOrAdmin() {
+      return isAdmin() || isMaad();
+    }
+
+    function isMaadOrPastorOrAdmin() {
+      return isAdmin() || isPastor() || isMaad();
+    }
+
+    function isSecretariaOrPastorOrAdmin() {
+      return isAdmin() || isPastor() || isSecretaria();
+    }
+
+    function getUserRole() {
+      return !isAuthenticated() ? null :
+        request.auth.token.role != null ? request.auth.token.role :
+        request.auth.token.email == 'admin@metodistaaliado.com.br' ? 'admin' :
+        request.auth.token.email == 'pastor@metodistaaliado.com.br' ? 'pastor' :
+        request.auth.token.email == 'maad@metodistaaliado.com.br' ? 'maad' :
+        request.auth.token.email == 'secretaria@metodistaaliado.com.br' ? 'secretaria' :
+        (hasUserDoc() && ('role' in getUserDoc().data) ? getUserDoc().data.role : 'member');
+    }
+
+    function getUserMinistryId() {
+      return !isAuthenticated() ? null :
+        request.auth.token.ministry_id != null ? request.auth.token.ministry_id :
+        (hasUserDoc() && ('ministry_id' in getUserDoc().data) ? getUserDoc().data.ministry_id : null);
+    }
+
+    function isMinistryLeader(ministryId) {
+      return isAuthenticated() && (
+        (getUserRole() == 'leader' && getUserMinistryId() == ministryId) ||
+        (exists(/databases/$(database)/documents/ministries/$(ministryId)) &&
+         get(/databases/$(database)/documents/ministries/$(ministryId)).data.leader_id == request.auth.uid)
+      );
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidProfile(data) {
+      return data.keys().hasOnly(['id', 'full_name', 'email', 'phone', 'birth_date', 'role', 'avatar_url', 'avatarUrl', 'expo_push_token', 'ministry_id', 'ministry_name', 'is_active']) &&
+        data.full_name is string && data.full_name.size() >= 1 && data.full_name.size() <= 100 &&
+        data.email is string && isValidEmail(data.email) && data.email.size() <= 100 &&
+        data.phone is string && data.phone.size() >= 8 && data.phone.size() <= 25 &&
+        data.role in ['admin', 'pastor', 'secretaria', 'maad', 'leader', 'volunteer', 'member'] &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('birth_date' in data) || (data.birth_date is string && data.birth_date.size() <= 15)) &&
+        (!('avatar_url' in data) || (data.avatar_url is string && data.avatar_url.size() <= 1000)) &&
+        (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 1000)) &&
+        (!('expo_push_token' in data) || (data.expo_push_token is string && data.expo_push_token.size() <= 256)) &&
+        (!('ministry_id' in data) || (data.ministry_id is string && data.ministry_id.size() <= 128)) &&
+        (!('ministry_name' in data) || (data.ministry_name is string && data.ministry_name.size() <= 100)) &&
+        (!('is_active' in data) || data.is_active is bool);
+    }
+
+    function isValidMinistry(data) {
+      return data.keys().hasOnly(['id', 'name', 'description', 'color_hex', 'icon_name', 'leader_id', 'leader_name', 'leader_phone', 'member_count']) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        data.description is string && data.description.size() <= 1000 &&
+        data.color_hex is string && data.color_hex.size() <= 20 &&
+        data.icon_name is string && data.icon_name.size() <= 50 &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('leader_id' in data) || (data.leader_id is string && data.leader_id.size() <= 128)) &&
+        (!('leader_name' in data) || (data.leader_name is string && data.leader_name.size() <= 100)) &&
+        (!('leader_phone' in data) || (data.leader_phone is string && data.leader_phone.size() <= 25)) &&
+        (!('member_count' in data) || (data.member_count is number && data.member_count >= 0));
+    }
+
+    function isValidSchedule(data) {
+      return data.keys().hasOnly(['id', 'ministry_id', 'ministry_name', 'ministry_color', 'title', 'event_date', 'notes', 'members', 'created_by']) &&
+        data.ministry_id is string && data.ministry_id.size() >= 1 && data.ministry_id.size() <= 128 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.event_date is string && data.event_date.size() >= 1 && data.event_date.size() <= 40 &&
+        data.members is list && data.members.size() <= 100 &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('ministry_name' in data) || (data.ministry_name is string && data.ministry_name.size() <= 100)) &&
+        (!('ministry_color' in data) || (data.ministry_color is string && data.ministry_color.size() <= 20)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
+        (!('created_by' in data) || (data.created_by is string && data.created_by.size() <= 128));
+    }
+
+    function isValidGoal(data) {
+      return data.keys().hasOnly(['id', 'created_by', 'title', 'description', 'priority', 'due_date', 'created_at', 'assignments']) &&
+        data.created_by is string && data.created_by.size() >= 1 && data.created_by.size() <= 128 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 2000 &&
+        data.priority in ['baixa', 'media', 'alta', 'urgente'] &&
+        data.due_date is string && data.due_date.size() <= 40 &&
+        data.created_at is string && data.created_at.size() <= 40 &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('assignments' in data) || (data.assignments is list && data.assignments.size() <= 50));
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasOnly(['id', 'assignment_id', 'author_id', 'author_name', 'notes', 'status', 'pastoral_feedback', 'created_at', 'media']) &&
+        data.assignment_id is string && data.assignment_id.size() >= 1 && data.assignment_id.size() <= 128 &&
+        data.author_id is string && data.author_id.size() >= 1 && data.author_id.size() <= 128 &&
+        data.notes is string && data.notes.size() >= 1 && data.notes.size() <= 5000 &&
+        data.status in ['enviado', 'aprovado', 'ajustes_solicitados'] &&
+        data.created_at is string && data.created_at.size() <= 40 &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('author_name' in data) || (data.author_name is string && data.author_name.size() <= 100)) &&
+        (!('pastoral_feedback' in data) || (data.pastoral_feedback is string && data.pastoral_feedback.size() <= 2000)) &&
+        (!('media' in data) || (data.media is list && data.media.size() <= 20));
+    }
+
+    function isValidBudget(data) {
+      return data.keys().hasOnly(['id', 'ministry_id', 'ministry_name', 'requested_by', 'requester_name', 'requester_phone', 'title', 'description', 'amount', 'status', 'pastoral_notes', 'maad_notes', 'created_at', 'updated_at']) &&
+        data.ministry_id is string && data.ministry_id.size() >= 1 && data.ministry_id.size() <= 128 &&
+        data.requested_by is string && data.requested_by.size() >= 1 && data.requested_by.size() <= 128 &&
+        data.requester_name is string && data.requester_name.size() >= 1 && data.requester_name.size() <= 100 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 2000 &&
+        data.amount is number && data.amount > 0 &&
+        data.status in ['aguardando_pastor', 'rejeitado_pastor', 'encaminhado_maad', 'aprovado_maad', 'rejeitado_maad', 'approved', 'rejected', 'pending'] &&
+        data.created_at is string && data.created_at.size() <= 40 &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('ministry_name' in data) || (data.ministry_name is string && data.ministry_name.size() <= 100)) &&
+        (!('requester_phone' in data) || (data.requester_phone is string && data.requester_phone.size() <= 25)) &&
+        (!('pastoral_notes' in data) || (data.pastoral_notes is string && data.pastoral_notes.size() <= 2000)) &&
+        (!('maad_notes' in data) || (data.maad_notes is string && data.maad_notes.size() <= 2000)) &&
+        (!('updated_at' in data) || (data.updated_at is string && data.updated_at.size() <= 40));
+    }
+
+    function isValidMinistryExpense(data) {
+      return data.keys().hasOnly(['id', 'ministry_id', 'ministry_name', 'reported_by', 'reporter_name', 'reporter_phone', 'related_goal_id', 'related_goal_title', 'description', 'amount', 'expense_date', 'receipt_url', 'status', 'created_at']) &&
+        data.ministry_id is string && data.ministry_id.size() >= 1 && data.ministry_id.size() <= 128 &&
+        data.reported_by is string && data.reported_by.size() >= 1 && data.reported_by.size() <= 128 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 2000 &&
+        data.amount is number && data.amount > 0 &&
+        data.expense_date is string && data.expense_date.size() <= 40 &&
+        data.status in ['pendente_aprovacao', 'aprovado', 'rejeitado', 'approved', 'rejected'] &&
+        data.created_at is string && data.created_at.size() <= 40 &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('ministry_name' in data) || (data.ministry_name is string && data.ministry_name.size() <= 100)) &&
+        (!('reporter_name' in data) || (data.reporter_name is string && data.reporter_name.size() <= 100)) &&
+        (!('reporter_phone' in data) || (data.reporter_phone is string && data.reporter_phone.size() <= 25)) &&
+        (!('related_goal_id' in data) || (data.related_goal_id is string && data.related_goal_id.size() <= 128)) &&
+        (!('related_goal_title' in data) || (data.related_goal_title is string && data.related_goal_title.size() <= 200)) &&
+        (!('receipt_url' in data) || (data.receipt_url is string && data.receipt_url.size() <= 1000));
+    }
+
+    function isValidCashTransaction(data) {
+      return data.keys().hasOnly(['id', 'type', 'category', 'description', 'amount', 'date', 'related_ministry_id', 'related_budget_id', 'receipt_url', 'registered_by', 'registered_by_name', 'created_at']) &&
+        data.type in ['entrada', 'saida'] &&
+        data.category in ['dizimo', 'oferta', 'doacao', 'campanha', 'despesa_fixa', 'orcamento_ministerio', 'manutencao', 'outro'] &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 500 &&
+        data.amount is number && data.amount > 0 &&
+        data.date is string && data.date.size() <= 40 &&
+        data.registered_by is string && data.registered_by.size() <= 128 &&
+        data.created_at is string && data.created_at.size() <= 40 &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('related_ministry_id' in data) || (data.related_ministry_id is string && data.related_ministry_id.size() <= 128)) &&
+        (!('related_budget_id' in data) || (data.related_budget_id is string && data.related_budget_id.size() <= 128)) &&
+        (!('receipt_url' in data) || (data.receipt_url is string && data.receipt_url.size() <= 1000)) &&
+        (!('registered_by_name' in data) || (data.registered_by_name is string && data.registered_by_name.size() <= 100));
+    }
+
+    function isValidAnnouncement(data) {
+      return data.keys().hasOnly(['id', 'author_id', 'author_name', 'title', 'content', 'priority', 'created_at']) &&
+        data.author_id is string && data.author_id.size() >= 1 && data.author_id.size() <= 128 &&
+        data.author_name is string && data.author_name.size() >= 1 && data.author_name.size() <= 100 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.content is string && data.content.size() >= 1 && data.content.size() <= 5000 &&
+        data.priority in ['normal', 'urgente'] &&
+        data.created_at is string && data.created_at.size() <= 40 &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128));
+    }
+
+    function isValidChurchEvent(data) {
+      return data.keys().hasOnly(['id', 'title', 'description', 'event_date', 'start_time', 'end_time', 'location', 'event_type', 'is_cancelled', 'cancelled_reason', 'recurring_schedule_id', 'created_by', 'created_by_name']) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.event_date is string && data.event_date.size() <= 40 &&
+        data.start_time is string && data.start_time.size() <= 20 &&
+        data.location is string && data.location.size() <= 200 &&
+        data.event_type in ['culto_fixo', 'evento_especial', 'confraternizacao'] &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        (!('end_time' in data) || (data.end_time is string && data.end_time.size() <= 20)) &&
+        (!('is_cancelled' in data) || data.is_cancelled is bool) &&
+        (!('cancelled_reason' in data) || (data.cancelled_reason is string && data.cancelled_reason.size() <= 500)) &&
+        (!('recurring_schedule_id' in data) || (data.recurring_schedule_id is string && data.recurring_schedule_id.size() <= 128)) &&
+        (!('created_by' in data) || (data.created_by is string && data.created_by.size() <= 128)) &&
+        (!('created_by_name' in data) || (data.created_by_name is string && data.created_by_name.size() <= 100));
+    }
+
+    // ===============================================================
+    // Rules Definition
+    // ===============================================================
+
+    // 1. PROFILES
+    // Read: authenticated user reading their own profile, or pastor/admin reading any profile
+    // Create / Alter role or is_active: strictly admin
+    // Update: user updating their own phone and avatarUrl (cannot change role, is_active, email, etc.)
+    match /profiles/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isPastorOrAdmin());
+
+      allow create: if isAdmin() && isValidProfile(request.resource.data);
+
+      allow update: if isAuthenticated() && isValidProfile(request.resource.data) && (
+        // Admin can update profile fields (id remains unchanged)
+        (isAdmin() && areImmutableFieldsUnchanged(['id'])) ||
+        // Regular user can ONLY update their own phone, avatar_url, avatarUrl, or push token
+        (
+          isOwner(userId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'avatar_url', 'avatarUrl', 'expo_push_token'])
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // 2. MINISTRIES
+    // Read: any authenticated church user
+    // Write (create/update/delete): admin or pastor
+    match /ministries/{ministryId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isPastorOrAdmin() && isValidMinistry(request.resource.data);
+
+      allow update: if isPastorOrAdmin() &&
+        isValidMinistry(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id']);
+
+      allow delete: if isPastorOrAdmin();
+    }
+
+    // 3. SCHEDULES
+    // Read: any authenticated church user
+    // Write (create/update/delete): admin, pastor, or leader of the ministry
+    // Volunteer confirmation update: volunteers can update the schedule members confirmation status
+    match /schedules/{scheduleId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated() &&
+        isValidSchedule(request.resource.data) &&
+        (isPastorOrAdmin() || isMinistryLeader(request.resource.data.ministry_id));
+
+      allow update: if isAuthenticated() && isValidSchedule(request.resource.data) && (
+        // Admin, pastor or ministry leader can manage schedule
+        ((isPastorOrAdmin() || isMinistryLeader(resource.data.ministry_id)) && areImmutableFieldsUnchanged(['id', 'ministry_id'])) ||
+        // Volunteer can ONLY update the members array (confirmation status / swap request)
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+      );
+
+      allow delete: if isPastorOrAdmin() || isMinistryLeader(resource.data.ministry_id);
+    }
+
+    // 4. GOALS
+    // Read: designated user in the goal, leader of the ministry, pastor or admin
+    // Write: leader of the ministry, pastor or admin
+    match /goals/{goalId} {
+      allow read: if isAuthenticated() && (
+        isPastorOrAdmin() ||
+        resource.data.created_by == request.auth.uid ||
+        getUserRole() in ['leader', 'volunteer']
+      );
+
+      allow create: if isAuthenticated() &&
+        isValidGoal(request.resource.data) &&
+        (isPastorOrAdmin() || getUserRole() == 'leader');
+
+      allow update: if isAuthenticated() &&
+        isValidGoal(request.resource.data) &&
+        (isPastorOrAdmin() || getUserRole() == 'leader') &&
+        areImmutableFieldsUnchanged(['id', 'created_at']);
+
+      allow delete: if isPastorOrAdmin();
+    }
+
+    // 5. REPORTS
+    // Read: any authenticated church user
+    // Create: designated volunteer or leader of the ministry
+    // Edit: author of the report, pastor or admin
+    match /reports/{reportId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated() &&
+        isValidReport(request.resource.data) &&
+        (request.resource.data.author_id == request.auth.uid || isPastorOrAdmin()) &&
+        (getUserRole() in ['volunteer', 'leader', 'pastor', 'admin']);
+
+      allow update: if isAuthenticated() &&
+        isValidReport(request.resource.data) &&
+        (resource.data.author_id == request.auth.uid || isPastorOrAdmin()) &&
+        areImmutableFieldsUnchanged(['id', 'assignment_id', 'author_id', 'created_at']);
+
+      allow delete: if isAuthenticated() && (resource.data.author_id == request.auth.uid || isPastorOrAdmin());
+    }
+
+    // 6. BUDGETS & MINISTRY EXPENSES
+    // Read: members of MAAD, pastor, admin and leader of the corresponding ministry
+    // Create budget/expense: ministry leader, MAAD, pastor, admin
+    // Review/Approve (status change): strictly MAAD, pastor or admin
+    match /budgets/{budgetId} {
+      allow read: if isMaadOrPastorOrAdmin() ||
+        isMinistryLeader(resource.data.ministry_id) ||
+        (isAuthenticated() && resource.data.requested_by == request.auth.uid);
+
+      allow create: if isAuthenticated() &&
+        isValidBudget(request.resource.data) &&
+        (
+          isMaadOrPastorOrAdmin() ||
+          (
+            isMinistryLeader(request.resource.data.ministry_id) &&
+            request.resource.data.requested_by == request.auth.uid &&
+            request.resource.data.status in ['aguardando_pastor', 'pending']
+          )
+        );
+
+      allow update: if isAuthenticated() &&
+        isValidBudget(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id', 'ministry_id', 'requested_by', 'created_at']) &&
+        (
+          // MAAD, Pastor or Admin can approve, reject or review
+          isMaadOrPastorOrAdmin() ||
+          // Ministry leader can only edit initial details while still pending review, never self-approve
+          (
+            isMinistryLeader(resource.data.ministry_id) &&
+            resource.data.requested_by == request.auth.uid &&
+            resource.data.status in ['aguardando_pastor', 'pending'] &&
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'pastoral_notes', 'maad_notes'])
+          )
+        );
+
+      allow delete: if isPastorOrAdmin();
+    }
+
+    match /ministry_expenses/{expenseId} {
+      allow read: if isMaadOrPastorOrAdmin() ||
+        isMinistryLeader(resource.data.ministry_id) ||
+        (isAuthenticated() && resource.data.reported_by == request.auth.uid);
+
+      allow create: if isAuthenticated() &&
+        isValidMinistryExpense(request.resource.data) &&
+        (
+          isMaadOrPastorOrAdmin() ||
+          (
+            isMinistryLeader(request.resource.data.ministry_id) &&
+            request.resource.data.reported_by == request.auth.uid &&
+            request.resource.data.status in ['pendente_aprovacao', 'pending']
+          )
+        );
+
+      allow update: if isAuthenticated() &&
+        isValidMinistryExpense(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id', 'ministry_id', 'reported_by', 'created_at']) &&
+        (
+          // Approval and status review strictly reserved for MAAD, pastor or admin
+          isMaadOrPastorOrAdmin() ||
+          // Reporter/Leader can only edit description/amount while pending approval, cannot approve
+          (
+            isMinistryLeader(resource.data.ministry_id) &&
+            resource.data.reported_by == request.auth.uid &&
+            resource.data.status in ['pendente_aprovacao', 'pending'] &&
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+          )
+        );
+
+      allow delete: if isMaadOrPastorOrAdmin();
+    }
+
+    // 7. CASH TRANSACTIONS (TESOURARIA / FLUXO DE CAIXA)
+    // Read and Write: strictly MAAD, pastor and admin
+    match /cash_transactions/{transactionId} {
+      allow read: if isMaadOrPastorOrAdmin();
+
+      allow create: if isMaadOrPastorOrAdmin() && isValidCashTransaction(request.resource.data);
+
+      allow update: if isMaadOrPastorOrAdmin() &&
+        isValidCashTransaction(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id', 'registered_by', 'created_at']);
+
+      allow delete: if isMaadOrPastorOrAdmin();
+    }
+
+    // 8. ANNOUNCEMENTS (COMUNICADOS)
+    // Read: any authenticated church user
+    // Create/Edit/Delete: secretaria, pastor or admin
+    match /announcements/{announcementId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isSecretariaOrPastorOrAdmin() && isValidAnnouncement(request.resource.data);
+
+      allow update: if isSecretariaOrPastorOrAdmin() &&
+        isValidAnnouncement(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id', 'created_at']);
+
+      allow delete: if isSecretariaOrPastorOrAdmin();
+    }
+
+    // 9. CHURCH EVENTS & CALENDAR (SECRETARIA & AGENDA DA IGREJA)
+    // Read: any authenticated church user
+    // Create/Edit/Delete: secretaria, pastor or admin
+    match /church_events/{eventId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isSecretariaOrPastorOrAdmin() && isValidChurchEvent(request.resource.data);
+
+      allow update: if isSecretariaOrPastorOrAdmin() &&
+        isValidChurchEvent(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id']);
+
+      allow delete: if isSecretariaOrPastorOrAdmin();
+    }
+
+    // Default Deny: Reject any unmapped collection or root access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

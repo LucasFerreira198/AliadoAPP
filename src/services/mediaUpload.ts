@@ -1,3 +1,5 @@
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage as firebaseStorage } from './firebase';
 import { supabase, isSupabaseConfigured } from './supabase';
 
 export interface UploadMediaResult {
@@ -7,9 +9,40 @@ export interface UploadMediaResult {
 }
 
 /**
+ * Faz upload de imagem ou vídeo para o Firebase Cloud Storage.
+ */
+export async function uploadMediaToFirebase(
+  localUri: string,
+  folder = 'uploads'
+): Promise<UploadMediaResult> {
+  if (!localUri) {
+    return { url: '', isRemote: false, error: 'URI de mídia não informada' };
+  }
+
+  if (localUri.startsWith('http://') || localUri.startsWith('https://')) {
+    return { url: localUri, isRemote: true };
+  }
+
+  try {
+    const extension = localUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const filename = `${folder}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${extension}`;
+    const storageRef = ref(firebaseStorage, filename);
+
+    const response = await fetch(localUri);
+    const blob = await response.blob();
+
+    const snapshot = await uploadBytes(storageRef, blob);
+    const downloadUrl = await getDownloadURL(snapshot.ref);
+
+    return { url: downloadUrl, isRemote: true };
+  } catch (err: any) {
+    console.warn('[UploadMedia] Falha no upload para Firebase Storage:', err);
+    return { url: localUri, isRemote: false, error: err?.message };
+  }
+}
+
+/**
  * Faz upload de imagem ou vídeo para o Supabase Storage no bucket 'church_media'.
- * Se o Supabase não estiver configurado ou ocorrer falha de rede temporária,
- * mantém a URI local para visualização temporária e futura sincronização.
  */
 export async function uploadMediaToSupabase(
   localUri: string,
@@ -19,7 +52,6 @@ export async function uploadMediaToSupabase(
     return { url: '', isRemote: false, error: 'URI de mídia não informada' };
   }
 
-  // Se já for uma URL remota HTTP/HTTPS, não faz novo upload
   if (localUri.startsWith('http://') || localUri.startsWith('https://')) {
     return { url: localUri, isRemote: true };
   }
@@ -42,7 +74,7 @@ export async function uploadMediaToSupabase(
       type: contentType,
     } as any);
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(bucketName)
       .upload(filePath, formData, {
         contentType,
@@ -63,7 +95,28 @@ export async function uploadMediaToSupabase(
       isRemote: true,
     };
   } catch (err: any) {
-    console.warn('[UploadMedia] Exceção durante upload:', err);
+    console.warn('[UploadMedia] Exceção durante upload no Supabase:', err);
     return { url: localUri, isRemote: false, error: err.message };
   }
+}
+
+/**
+ * Upload unificado: prioriza Firebase Storage, com fallback para Supabase Storage
+ * e por fim retenção da URI local offline para posterior sincronização.
+ */
+export async function uploadMedia(localUri: string, folder = 'uploads'): Promise<UploadMediaResult> {
+  try {
+    const fbResult = await uploadMediaToFirebase(localUri, folder);
+    if (fbResult.isRemote) {
+      return fbResult;
+    }
+  } catch {
+    // Segue para fallback
+  }
+
+  if (isSupabaseConfigured()) {
+    return uploadMediaToSupabase(localUri, folder);
+  }
+
+  return { url: localUri, isRemote: false };
 }

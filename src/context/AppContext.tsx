@@ -42,12 +42,15 @@ import { SecureStorageService } from '../services/secureStorage';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 import { generateUUID } from '../utils/uuid';
+import { FirestoreService } from '../services/firestoreService';
+import { signInWithGoogleService, signOutFromFirebase } from '../services/firebaseAuth';
 
 interface AppContextType {
   // Autenticação & Perfil
   currentUser: Profile | null;
   isAuthenticated: boolean;
   signIn: (email: string, password?: string, role?: string) => Promise<{ success: boolean; error?: string }>;
+  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   profiles: Profile[];
 
@@ -246,6 +249,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (count > 0 && isSupabaseConfigured()) {
           await syncOfflineQueue();
         }
+
+        // Sincronização inicial com o Cloud Firestore
+        try {
+          await FirestoreService.seedInitialDataIfEmpty();
+          const [fbProfiles, fbGoals, fbSchedules, fbAnnouncements, fbBudgets, fbExpenses, fbCash, fbEvents] = await Promise.all([
+            FirestoreService.getProfiles(),
+            FirestoreService.getGoals(),
+            FirestoreService.getSchedules(),
+            FirestoreService.getAnnouncements(),
+            FirestoreService.getBudgets(),
+            FirestoreService.getExpenses(),
+            FirestoreService.getCashTransactions(),
+            FirestoreService.getEvents(),
+          ]);
+
+          if (fbProfiles.length > 0) setProfiles(fbProfiles);
+          if (fbGoals.length > 0) setGoals(fbGoals);
+          if (fbSchedules.length > 0) setSchedules(fbSchedules);
+          if (fbAnnouncements.length > 0) setAnnouncements(fbAnnouncements);
+          if (fbBudgets.length > 0) setBudgets(fbBudgets);
+          if (fbExpenses.length > 0) setExpenses(fbExpenses);
+          if (fbCash.length > 0) setCashTransactions(fbCash);
+          if (fbEvents.length > 0) setEvents(fbEvents);
+        } catch (fbErr) {
+          console.warn('[AppContext] Falha ao sincronizar com Firestore:', fbErr);
+        }
       } catch (err) {
         console.error('[AppProvider] Erro ao carregar armazenamento local:', err);
       }
@@ -406,9 +435,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
+  const signInWithGoogle = async () => {
+    try {
+      const res = await signInWithGoogleService();
+      if (res.success && res.profile) {
+        setCurrentUser(res.profile);
+        await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(res.profile));
+        return { success: true };
+      }
+      return { success: false, error: res.error || 'Falha ao autenticar com o Google.' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Erro inesperado no login Google.' };
+    }
+  };
+
   const signOut = async () => {
     setCurrentUser(null);
     await SecureStorageService.deleteItem(STORAGE_KEYS.USER);
+    await signOutFromFirebase();
     if (isSupabaseConfigured()) {
       try {
         await supabase.auth.signOut();
@@ -466,6 +510,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (error) {
         console.error('[Admin] Erro ao sincronizar novo perfil no Supabase:', error.message);
       }
+    }
+
+    try {
+      await FirestoreService.saveProfile(newProfile);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar perfil:', fbErr);
     }
 
     await scheduleLocalNotification(
@@ -559,6 +609,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
         await supabase.from('schedule_members').insert(membersData);
       }
+    }
+
+    try {
+      await FirestoreService.saveSchedule(newSchedule);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar escala:', fbErr);
     }
 
     await scheduleLocalNotification(
@@ -695,6 +751,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
+    try {
+      await FirestoreService.saveEvent(newEv);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar evento:', fbErr);
+    }
+
     await scheduleLocalNotification(
       'Novo Evento na Agenda da Igreja! 🗓️',
       `${data.title} no dia ${data.event_date}. Confira no calendário!`
@@ -797,6 +859,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    try {
+      await FirestoreService.saveGoal(newGoal);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar meta:', fbErr);
+    }
+
     const ministryNames = data.ministryIds
       .map(id => ministries.find(m => m.id === id)?.name)
       .filter(Boolean)
@@ -883,6 +951,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: 'concluida',
         completed_at: new Date().toISOString(),
       }).eq('id', assignmentId);
+    }
+
+    try {
+      await FirestoreService.saveReport(newReport);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar relatório:', fbErr);
     }
 
     await scheduleLocalNotification(
@@ -1069,6 +1143,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }).eq('id', budgetId);
     }
 
+    try {
+      await FirestoreService.updateBudgetStatus(budgetId, nextStatus);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao atualizar orçamento:', fbErr);
+    }
+
     if (action === 'encaminhar_maad') {
       await scheduleLocalNotification(
         'Orçamento Encaminhado ao MAAD! 🏦',
@@ -1113,6 +1193,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         maad_notes: maadNotes,
         updated_at: new Date().toISOString(),
       }).eq('id', budgetId);
+    }
+
+    try {
+      await FirestoreService.updateBudgetStatus(budgetId, nextStatus);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao atualizar orçamento:', fbErr);
     }
 
     // Transação Atômica: Se for aprovado, lança a saída financeira no caixa
@@ -1201,6 +1287,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.error('[Cash] Erro ao sincronizar lançamento no Supabase:', error.message);
       }
     }
+
+    try {
+      await FirestoreService.saveCashTransaction(newTx);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar lançamento financeiro:', fbErr);
+    }
   };
 
   const getCashSummary = () => {
@@ -1268,6 +1360,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    try {
+      await FirestoreService.saveExpense(newExpense);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar despesa:', fbErr);
+    }
+
     await scheduleLocalNotification(
       'Novo Comprovante de Gasto 🧾',
       `${currentUser?.full_name} lançou uma despesa de R$ ${data.amount.toFixed(2)} para conferência pastoral.`
@@ -1292,6 +1390,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await supabase.from('ministry_expenses').update({
         status: nextStatus,
       }).eq('id', expenseId);
+    }
+
+    try {
+      await FirestoreService.updateExpenseStatus(expenseId, approved ? 'approved' : 'rejected');
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao atualizar despesa:', fbErr);
     }
   };
 
@@ -1322,6 +1426,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         content: newAnc.content,
         priority: newAnc.priority,
       });
+    }
+
+    try {
+      await FirestoreService.saveAnnouncement(newAnc);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar comunicado:', fbErr);
     }
 
     await scheduleLocalNotification(
@@ -1361,6 +1471,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         isAuthenticated: !!currentUser,
         signIn,
+        signInWithGoogle,
         signOut,
         profiles,
         createAccount,

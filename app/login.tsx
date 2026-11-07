@@ -7,10 +7,12 @@ import {
   TouchableOpacity, 
   Alert, 
   KeyboardAvoidingView, 
-  Platform 
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import { router } from 'expo-router';
-import { Flame, Lock, Mail, Sun, Moon, ArrowRight, HelpCircle } from 'lucide-react-native';
+import { Flame, ArrowRight, HelpCircle, Sun, Moon } from 'lucide-react-native';
+import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../src/context/AppContext';
 import { Input } from '../src/components/ui/Input';
@@ -18,13 +20,14 @@ import { Button } from '../src/components/ui/Button';
 import { Colors, getThemeColors } from '../src/theme/colors';
 
 export default function LoginScreen() {
-  const { signIn, theme, toggleTheme } = useApp();
+  const { signIn, signInWithGoogle, theme, toggleTheme } = useApp();
   const themeColors = getThemeColors(theme);
   const isDark = theme === 'dark';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -52,28 +55,42 @@ export default function LoginScreen() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const res = await signInWithGoogle();
+      if (res.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.replace('/');
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('Autenticação Google', res.error || 'Não foi possível concluir o login com o Google.');
+      }
+    } catch (err: any) {
+      Alert.alert('Erro', err.message || 'Falha ao autenticar com o Google.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView 
       style={[styles.container, { backgroundColor: themeColors.background }]} 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Barra Superior */}
+        {/* Barra Superior com Badge e Toggle de Tema */}
         <View style={styles.topBar}>
-          <View style={[styles.churchBadge, { backgroundColor: isDark ? '#1E293B' : '#0F172A' }]}>
-            <Text style={styles.churchBadgeText}>IGREJA METODISTA ALIADO</Text>
+          <View style={[styles.churchBadge, { backgroundColor: Colors.primary.DEFAULT }]}>
+            <Text style={styles.churchBadgeText}>METODISTA ALIADO</Text>
           </View>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              toggleTheme();
-            }}
-            style={[styles.themeBtn, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
-            accessibilityLabel="Alternar Tema Claro e Escuro"
+          <TouchableOpacity 
+            style={[styles.themeBtn, { borderColor: themeColors.border, backgroundColor: themeColors.surface }]}
+            onPress={toggleTheme}
+            activeOpacity={0.7}
           >
-            {theme === 'dark' ? (
+            {isDark ? (
               <Sun size={20} color="#F59E0B" />
             ) : (
               <Moon size={20} color="#64748B" />
@@ -124,11 +141,61 @@ export default function LoginScreen() {
             title="Entrar no Portal"
             onPress={handleLogin}
             loading={loading}
+            disabled={googleLoading}
             variant="primary"
             size="lg"
             icon={<ArrowRight size={18} color="#FFFFFF" />}
             style={{ marginTop: 8 }}
           />
+
+          {/* Divisor "ou continue com" */}
+          <View style={styles.dividerContainer}>
+            <View style={[styles.dividerLine, { backgroundColor: themeColors.border }]} />
+            <Text style={[styles.dividerText, { color: themeColors.textSecondary }]}>ou continue com</Text>
+            <View style={[styles.dividerLine, { backgroundColor: themeColors.border }]} />
+          </View>
+
+          {/* Botão de Login com Google */}
+          <TouchableOpacity
+            style={[
+              styles.googleButton, 
+              { 
+                borderColor: themeColors.border, 
+                backgroundColor: isDark ? '#1E293B' : '#FFFFFF' 
+              }
+            ]}
+            onPress={handleGoogleLogin}
+            disabled={loading || googleLoading}
+            activeOpacity={0.8}
+          >
+            {googleLoading ? (
+              <ActivityIndicator size="small" color={themeColors.textPrimary} />
+            ) : (
+              <>
+                <Svg width={20} height={20} viewBox="0 0 24 24" style={{ marginRight: 10 }}>
+                  <Path
+                    fill="#4285F4"
+                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                  />
+                  <Path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                  />
+                  <Path
+                    fill="#FBBC05"
+                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                  />
+                  <Path
+                    fill="#EA4335"
+                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                  />
+                </Svg>
+                <Text style={[styles.googleButtonText, { color: themeColors.textPrimary }]}>
+                  Entrar com o Google
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
 
           {/* Ajuda Pastoral e Suporte */}
           <TouchableOpacity 
@@ -235,11 +302,46 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     lineHeight: 18,
   },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 18,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+    marginBottom: 10,
+  },
+  googleButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
   helpLink: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 14,
     paddingVertical: 6,
   },
   helpLinkText: {

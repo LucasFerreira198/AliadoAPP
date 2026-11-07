@@ -20,7 +20,7 @@ import { WhatsAppQuickAction } from '../src/components/actions/WhatsAppQuickActi
 import { WhatsAppMessages } from '../src/services/whatsapp';
 import { Colors, getThemeColors } from '../src/theme/colors';
 import { parseCurrencyInput, formatCurrency } from '../src/utils/formatters';
-import { uploadMediaToSupabase } from '../src/services/mediaUpload';
+import { uploadMedia } from '../src/services/mediaUpload';
 
 export default function ExpensesScreen() {
   const { 
@@ -61,7 +61,7 @@ export default function ExpensesScreen() {
     try {
       let finalReceiptUrl = receiptUrls[0];
       if (finalReceiptUrl && !finalReceiptUrl.startsWith('http')) {
-        const uploadRes = await uploadMediaToSupabase(finalReceiptUrl);
+        const uploadRes = await uploadMedia(finalReceiptUrl, 'receipts');
         finalReceiptUrl = uploadRes.url;
       }
 
