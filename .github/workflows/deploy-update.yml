@@ -100,16 +100,18 @@ jobs:
             aliadoapp-*.apk
             aliadoapp-web-build.zip
           body: |
-            ## ⛪ Igreja Metodista Aliado - Atualização Oficial
+            ## ⛪ Igreja Metodista Aliado - Atualização Oficial ${{ steps.get_version.outputs.version }}
 
             Nova versão disponível com suporte a compilação móvel nativa e web.
 
             ### 📲 Downloads Disponíveis:
             - **Android APK:** Baixe o arquivo `.apk` anexado para instalar diretamente em qualquer smartphone ou tablet Android (sem passar por lojas).
-            - **Web / Desktop:** Baixe `aliadoapp-web-build.zip` para hospedar em qualquer servidor ou CDN web.
+            - **Web / Desktop:** Acesse https://aliadoapp.vercel.app ou baixe `aliadoapp-web-build.zip`.
             - **iOS:** Utilize `npx eas-cli@latest build -p ios --profile preview` via EAS Cloud ou acesse via navegador Safari ("Adicionar à Tela de Início").
 
-            ### ✨ Recursos Inclusos:
+            ### ✨ Recursos e Melhorias da Versão:
+            - Integração completa com Google Cloud Firebase (Cloud Firestore & Storage).
+            - Autenticação e Login com o Google (Web e Mobile).
             - Atualizador automático in-app integrado com GitHub Releases.
             - Validação estrita de credenciais com armazenamento criptografado no dispositivo.
             - Correção do cálculo financeiro de milhar e centavos no caixa e orçamentos do MAAD.

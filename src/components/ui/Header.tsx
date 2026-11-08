@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../../context/AppContext';
 import { Colors, getThemeColors } from '../../theme/colors';
+import { getCurrentAppVersion } from '../../services/appUpdates';
 
 export const Header: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -225,6 +226,12 @@ export const Header: React.FC = () => {
               <LogOut size={16} color="#DC2626" />
               <Text style={styles.logoutBtnText}>Encerrar Sessão</Text>
             </TouchableOpacity>
+
+            <View style={{ alignItems: 'center', marginTop: 14 }}>
+              <Text style={{ fontSize: 11, color: themeColors.textSecondary, fontWeight: '500' }}>
+                Igreja Metodista Aliado • v{getCurrentAppVersion()}
+              </Text>
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>

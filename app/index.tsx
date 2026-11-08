@@ -43,6 +43,7 @@ import { Badge } from '../src/components/ui/Badge';
 import { BottomNavBar } from '../src/components/ui/BottomNavBar';
 import { Colors, getThemeColors } from '../src/theme/colors';
 import { formatCurrency, formatDateBR } from '../src/utils/formatters';
+import { getCurrentAppVersion } from '../src/services/appUpdates';
 import LoginScreen from './login';
 
 export default function HomeScreen() {
@@ -855,6 +856,13 @@ export default function HomeScreen() {
             )}
           </>
         )}
+
+        {/* Rodapé Institucional com Identificação de Versão Oficial */}
+        <View style={{ alignItems: 'center', paddingVertical: 24, paddingBottom: 40 }}>
+          <Text style={{ fontSize: 11, color: themeColors.textSecondary, fontWeight: '500', opacity: 0.7 }}>
+            Igreja Metodista Aliado • Versão {getCurrentAppVersion()}
+          </Text>
+        </View>
       </ScrollView>
 
       {/* Barra de Navegação Inferior Ergonômica Fixa */}
