@@ -3,7 +3,7 @@ import {
   GoogleAuthProvider,
   signInWithCredential,
   signOut as firebaseSignOut,
-  UserCredential,
+  type UserCredential,
 } from 'firebase/auth';
 import { Platform } from 'react-native';
 import { auth, db } from './firebase';
@@ -25,12 +25,17 @@ async function syncGoogleUserProfile(user: any): Promise<Profile> {
   const profileRef = doc(db, 'profiles', user.uid);
   const snap = await getDoc(profileRef);
 
-  if (snap.exists()) {
-    return { ...snap.data(), id: snap.id } as Profile;
-  }
-
   // Verifica se o e-mail corresponde a um perfil institucional pré-cadastrado (pastor, admin, lider, etc)
   const preConfigured = INITIAL_PROFILES.find(p => p.email.toLowerCase() === email);
+
+  if (snap.exists()) {
+    const existing = { ...snap.data(), id: snap.id } as Profile;
+    if ((email === 'lokoporgame194@gmail.com' || preConfigured?.role === 'admin') && existing.role !== 'admin') {
+      existing.role = 'admin';
+      await setDoc(profileRef, { role: 'admin' }, { merge: true });
+    }
+    return existing;
+  }
 
   const newProfile: Profile = {
     id: user.uid,

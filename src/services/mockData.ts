@@ -17,6 +17,8 @@ import type {
  */
 export const DEMO_CREDENTIALS: Record<string, string> = {
   'admin@metodistaaliado.com.br': '123456',
+  'admin@aliado.com': '123456',
+  'lokoporgame194@gmail.com': '123456',
   'pastor@metodistaaliado.com.br': '123456',
   'secretaria@metodistaaliado.com.br': '123456',
   'maad@metodistaaliado.com.br': '123456',
@@ -58,6 +60,16 @@ export const INITIAL_PROFILES: Profile[] = [
     phone: '11999990000',
     role: 'admin',
     birth_date: '1985-01-10',
+    avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    is_active: true,
+  },
+  {
+    id: '00000000-0000-0000-0000-000000000099',
+    full_name: 'Lucas Ferreira (Admin)',
+    email: 'lokoporgame194@gmail.com',
+    phone: '11999999999',
+    role: 'admin',
+    birth_date: '1995-01-01',
     avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
     is_active: true,
   },

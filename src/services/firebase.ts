@@ -1,7 +1,9 @@
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
-import { getAuth, Auth } from 'firebase/auth';
-import { getStorage, FirebaseStorage } from 'firebase/storage';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAQa2EU4te4iZp_flPseWk-gZJE4X8A3yk',
@@ -16,6 +18,26 @@ const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) 
 
 export const db: Firestore = getFirestore(app);
 export const storage: FirebaseStorage = getStorage(app);
-export const auth: Auth = getAuth(app);
 
+// Inicialização segura do Auth com persistência em AsyncStorage para React Native
+let authInstance: Auth;
+try {
+  if (Platform.OS !== 'web') {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const authModule = require('firebase/auth');
+    if (typeof authModule.initializeAuth === 'function' && typeof authModule.getReactNativePersistence === 'function') {
+      authInstance = authModule.initializeAuth(app, {
+        persistence: authModule.getReactNativePersistence(AsyncStorage),
+      });
+    } else {
+      authInstance = getAuth(app);
+    }
+  } else {
+    authInstance = getAuth(app);
+  }
+} catch {
+  authInstance = getAuth(app);
+}
+
+export const auth: Auth = authInstance;
 export default app;

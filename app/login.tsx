@@ -8,10 +8,23 @@ import {
   Alert, 
   KeyboardAvoidingView, 
   Platform,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal
 } from 'react-native';
 import { router } from 'expo-router';
-import { Flame, ArrowRight, HelpCircle, Sun, Moon } from 'lucide-react-native';
+import { 
+  Flame, 
+  ArrowRight, 
+  HelpCircle, 
+  Sun, 
+  Moon, 
+  X, 
+  KeyRound, 
+  ShieldCheck, 
+  CheckCircle2, 
+  UserCheck, 
+  Sparkles 
+} from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../src/context/AppContext';
@@ -20,7 +33,7 @@ import { Button } from '../src/components/ui/Button';
 import { Colors, getThemeColors } from '../src/theme/colors';
 
 export default function LoginScreen() {
-  const { signIn, signInWithGoogle, theme, toggleTheme } = useApp();
+  const { signIn, signInWithGoogle, resetPassword, theme, toggleTheme } = useApp();
   const themeColors = getThemeColors(theme);
   const isDark = theme === 'dark';
 
@@ -29,8 +42,17 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
+  // Modal de Primeiro Acesso & Recuperação de Senha
+  const [helpModalVisible, setHelpModalVisible] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetStatus, setResetStatus] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleLogin = async (overrideEmail?: string, overridePass?: string) => {
+    const targetEmail = overrideEmail || email;
+    const targetPassword = overridePass || password;
+
+    if (!targetEmail.trim() || !targetPassword.trim()) {
       Alert.alert(
         'Graça e Paz!', 
         'Por favor, preencha seu e-mail e sua senha de acesso cadastrada na secretaria.'
@@ -40,7 +62,7 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const res = await signIn(email.trim(), password.trim());
+      const res = await signIn(targetEmail.trim(), targetPassword.trim());
       if (res.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace('/');
@@ -72,6 +94,40 @@ export default function LoginScreen() {
     } finally {
       setGoogleLoading(false);
     }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetEmail.trim()) {
+      setResetStatus({ success: false, message: 'Digite seu e-mail cadastrado.' });
+      return;
+    }
+
+    setResetLoading(true);
+    setResetStatus(null);
+    try {
+      const res = await resetPassword(resetEmail.trim());
+      setResetStatus(res);
+      if (res.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setEmail(resetEmail.trim());
+        setPassword('123456');
+        setTimeout(() => {
+          setHelpModalVisible(false);
+        }, 1800);
+      }
+    } catch {
+      setResetStatus({ success: false, message: 'Não foi possível redefinir. Tente novamente.' });
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleQuickLogin = (demoEmail: string, demoPass: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEmail(demoEmail);
+    setPassword(demoPass);
+    setHelpModalVisible(false);
+    handleLogin(demoEmail, demoPass);
   };
 
   return (
@@ -139,7 +195,7 @@ export default function LoginScreen() {
 
           <Button
             title="Entrar no Portal"
-            onPress={handleLogin}
+            onPress={() => handleLogin()}
             loading={loading}
             disabled={googleLoading}
             variant="primary"
@@ -197,15 +253,15 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          {/* Ajuda Pastoral e Suporte */}
+          {/* Ajuda Pastoral e Suporte - Abre Modal Interativo */}
           <TouchableOpacity 
             activeOpacity={0.7}
             style={styles.helpLink}
             onPress={() => {
-              Alert.alert(
-                'Primeiro Acesso ou Redefinição',
-                'Para cadastrar novos líderes, alterar sua senha ou solicitar acesso aos ministérios, procure a Secretaria da igreja ou o Pastor titular.'
-              );
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setResetStatus(null);
+              setResetEmail(email);
+              setHelpModalVisible(true);
             }}
           >
             <HelpCircle size={15} color={themeColors.textSecondary} style={{ marginRight: 6 }} />
@@ -215,6 +271,169 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Modal Interativo de Primeiro Acesso & Recuperação de Senha */}
+      <Modal
+        visible={helpModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setHelpModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalBox, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+            {/* Cabeçalho do Modal */}
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <KeyRound size={22} color={Colors.primary.DEFAULT} />
+                <Text style={[styles.modalTitle, { color: themeColors.textPrimary }]}>
+                  Acesso & Senha
+                </Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setHelpModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={22} color={themeColors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+              {/* Seção 1: Primeiro Acesso */}
+              <View style={[styles.modalSectionCard, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#EFF6FF', borderColor: '#BFDBFE' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <Sparkles size={16} color="#2563EB" />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#1D4ED8' }}>
+                    É seu Primeiro Acesso?
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12, color: isDark ? '#93C5FD' : '#1E40AF', lineHeight: 18 }}>
+                  Todas as contas criadas pela Secretaria e Administração possuem a senha padrão inicial <Text style={{ fontWeight: '800' }}>123456</Text>. Digite seu e-mail e use essa senha para entrar!
+                </Text>
+              </View>
+
+              {/* Seção 2: Redefinição Rápida de Senha */}
+              <Text style={[styles.sectionSubtitle, { color: themeColors.textPrimary, marginTop: 14 }]}>
+                Redefinir Senha
+              </Text>
+              <Text style={[styles.sectionDesc, { color: themeColors.textSecondary }]}>
+                Informe seu e-mail para restaurar sua senha para o padrão institucional (123456):
+              </Text>
+
+              <Input
+                label="Seu E-mail Cadastrado"
+                placeholder="seu.email@metodistaaliado.com.br"
+                value={resetEmail}
+                onChangeText={setResetEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              {resetStatus && (
+                <View style={[styles.statusAlert, resetStatus.success ? styles.statusSuccess : styles.statusError]}>
+                  {resetStatus.success ? (
+                    <CheckCircle2 size={16} color="#16A34A" />
+                  ) : (
+                    <X size={16} color="#DC2626" />
+                  )}
+                  <Text style={[styles.statusText, { color: resetStatus.success ? '#15803D' : '#B91C1C' }]}>
+                    {resetStatus.message}
+                  </Text>
+                </View>
+              )}
+
+              <Button
+                title="Restaurar Minha Senha"
+                onPress={handleResetPassword}
+                loading={resetLoading}
+                variant="secondary"
+                icon={<KeyRound size={16} color={themeColors.textPrimary} />}
+                style={{ marginTop: 8 }}
+              />
+
+              {/* Seção 3: Acesso Rápido com Contas Oficiais */}
+              <View style={{ marginTop: 20 }}>
+                <Text style={[styles.sectionSubtitle, { color: themeColors.textPrimary }]}>
+                  Acesso Direto com Contas Oficiais
+                </Text>
+                <Text style={[styles.sectionDesc, { color: themeColors.textSecondary }]}>
+                  Toque para entrar instantaneamente com o perfil correspondente:
+                </Text>
+
+                <View style={styles.quickAccessList}>
+                  {/* Admin Geral Oficial */}
+                  <TouchableOpacity
+                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#FEF2F2', borderColor: '#FECACA' }]}
+                    onPress={() => handleQuickLogin('admin@metodistaaliado.com.br', '123456')}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <ShieldCheck size={18} color="#DC2626" />
+                      <View>
+                        <Text style={[styles.quickTitle, { color: '#DC2626' }]}>🛡️ Administrador Geral</Text>
+                        <Text style={styles.quickSub}>admin@metodistaaliado.com.br (cria e gerencia todas as contas)</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Lucas Admin */}
+                  <TouchableOpacity
+                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#FFFBEB', borderColor: '#FDE68A' }]}
+                    onPress={() => handleQuickLogin('lokoporgame194@gmail.com', '123456')}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <UserCheck size={18} color="#D97706" />
+                      <View>
+                        <Text style={[styles.quickTitle, { color: '#D97706' }]}>👑 Lucas Ferreira (Admin)</Text>
+                        <Text style={styles.quickSub}>lokoporgame194@gmail.com (Conta Pessoal Admin)</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Pastor */}
+                  <TouchableOpacity
+                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', borderColor: themeColors.border }]}
+                    onPress={() => handleQuickLogin('pastor@metodistaaliado.com.br', '123456')}
+                    activeOpacity={0.7}
+                  >
+                    <View>
+                      <Text style={[styles.quickTitle, { color: themeColors.textPrimary }]}>📖 Pastor Carlos Alberto</Text>
+                      <Text style={styles.quickSub}>pastor@metodistaaliado.com.br</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Secretaria */}
+                  <TouchableOpacity
+                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', borderColor: themeColors.border }]}
+                    onPress={() => handleQuickLogin('secretaria@metodistaaliado.com.br', '123456')}
+                    activeOpacity={0.7}
+                  >
+                    <View>
+                      <Text style={[styles.quickTitle, { color: themeColors.textPrimary }]}>📋 Fernanda Rocha (Secretaria)</Text>
+                      <Text style={styles.quickSub}>secretaria@metodistaaliado.com.br</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* MAAD */}
+                  <TouchableOpacity
+                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', borderColor: themeColors.border }]}
+                    onPress={() => handleQuickLogin('maad@metodistaaliado.com.br', '123456')}
+                    activeOpacity={0.7}
+                  >
+                    <View>
+                      <Text style={[styles.quickTitle, { color: themeColors.textPrimary }]}>💰 Tesouraria MAAD</Text>
+                      <Text style={styles.quickSub}>maad@metodistaaliado.com.br</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -342,11 +561,93 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 14,
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
   helpLinkText: {
     fontSize: 13,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '90%',
+    borderWidth: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  modalSectionCard: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  sectionDesc: {
+    fontSize: 12,
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+  statusAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 8,
+  },
+  statusSuccess: {
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  statusError: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  quickAccessList: {
+    gap: 8,
+    marginTop: 6,
+  },
+  quickCard: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  quickTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  quickSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
   },
 });

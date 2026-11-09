@@ -55,6 +55,7 @@ export default function AdminScreen() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('123456');
   const [role, setRole] = useState<UserRole>('leader');
   const [selectedMinistryId, setSelectedMinistryId] = useState(ministries[0]?.id || '');
   const [loading, setLoading] = useState(false);
@@ -88,13 +89,15 @@ export default function AdminScreen() {
         phone: phone.trim(),
         role,
         ministry_id: role === 'leader' ? selectedMinistryId : undefined,
+        password: password.trim() || '123456',
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Conta Criada!', `O usuário ${fullName} foi cadastrado com sucesso.`);
+      Alert.alert('Conta Criada!', `O usuário ${fullName} foi cadastrado com sucesso. Senha inicial: ${password.trim() || '123456'}`);
       setFullName('');
       setEmail('');
       setPhone('');
+      setPassword('123456');
       setShowNewUser(false);
     } catch (err: any) {
       Alert.alert('Erro', err.message || 'Não foi possível cadastrar o usuário.');
@@ -179,6 +182,14 @@ export default function AdminScreen() {
             value={phone}
             onChangeText={setPhone}
             keyboardType="phone-pad"
+          />
+
+          <Input
+            label="Senha Inicial de Acesso (padrão: 123456) *"
+            placeholder="Digite a senha"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
           />
 
           {/* Seletor de Papel */}

@@ -52,6 +52,7 @@ interface AppContextType {
   signIn: (email: string, password?: string, role?: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string, newPassword?: string) => Promise<{ success: boolean; message: string }>;
   profiles: Profile[];
 
   // Painel do Administrador (Criação e Gestão de Contas)
@@ -62,6 +63,7 @@ interface AppContextType {
     role: UserRole;
     ministry_id?: string;
     birth_date?: string;
+    password?: string;
   }) => Promise<void>;
   toggleAccountStatus: (userId: string) => Promise<void>;
 
@@ -250,31 +252,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await syncOfflineQueue();
         }
 
-        // Sincronização inicial com o Cloud Firestore
-        try {
-          await FirestoreService.seedInitialDataIfEmpty();
-          const [fbProfiles, fbGoals, fbSchedules, fbAnnouncements, fbBudgets, fbExpenses, fbCash, fbEvents] = await Promise.all([
-            FirestoreService.getProfiles(),
-            FirestoreService.getGoals(),
-            FirestoreService.getSchedules(),
-            FirestoreService.getAnnouncements(),
-            FirestoreService.getBudgets(),
-            FirestoreService.getExpenses(),
-            FirestoreService.getCashTransactions(),
-            FirestoreService.getEvents(),
-          ]);
+        // Sincronização em segundo plano não-bloqueante com o Cloud Firestore
+        setTimeout(async () => {
+          try {
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('timeout_firestore_sync')), 5000)
+            );
+            await Promise.race([
+              (async () => {
+                await FirestoreService.seedInitialDataIfEmpty();
+                const [fbProfiles, fbGoals, fbSchedules, fbAnnouncements, fbBudgets, fbExpenses, fbCash, fbEvents] = await Promise.all([
+                  FirestoreService.getProfiles(),
+                  FirestoreService.getGoals(),
+                  FirestoreService.getSchedules(),
+                  FirestoreService.getAnnouncements(),
+                  FirestoreService.getBudgets(),
+                  FirestoreService.getExpenses(),
+                  FirestoreService.getCashTransactions(),
+                  FirestoreService.getEvents(),
+                ]);
 
-          if (fbProfiles.length > 0) setProfiles(fbProfiles);
-          if (fbGoals.length > 0) setGoals(fbGoals);
-          if (fbSchedules.length > 0) setSchedules(fbSchedules);
-          if (fbAnnouncements.length > 0) setAnnouncements(fbAnnouncements);
-          if (fbBudgets.length > 0) setBudgets(fbBudgets);
-          if (fbExpenses.length > 0) setExpenses(fbExpenses);
-          if (fbCash.length > 0) setCashTransactions(fbCash);
-          if (fbEvents.length > 0) setEvents(fbEvents);
-        } catch (fbErr) {
-          console.warn('[AppContext] Falha ao sincronizar com Firestore:', fbErr);
-        }
+                if (fbProfiles.length > 0) setProfiles(fbProfiles);
+                if (fbGoals.length > 0) setGoals(fbGoals);
+                if (fbSchedules.length > 0) setSchedules(fbSchedules);
+                if (fbAnnouncements.length > 0) setAnnouncements(fbAnnouncements);
+                if (fbBudgets.length > 0) setBudgets(fbBudgets);
+                if (fbExpenses.length > 0) setExpenses(fbExpenses);
+                if (fbCash.length > 0) setCashTransactions(fbCash);
+                if (fbEvents.length > 0) setEvents(fbEvents);
+              })(),
+              timeoutPromise
+            ]);
+          } catch (fbErr) {
+            console.warn('[AppContext] Sincronização remota em segundo plano ignorada (offline ou timeout):', fbErr);
+          }
+        }, 300);
       } catch (err) {
         console.error('[AppProvider] Erro ao carregar armazenamento local:', err);
       }
@@ -425,14 +437,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const expectedPassword = DEMO_CREDENTIALS[cleanEmail];
-    if (!expectedPassword || password.trim() !== expectedPassword) {
-      return { success: false, error: 'Senha incorreta. Tente novamente.' };
+    // Verifica credenciais customizadas ou padrão
+    const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
+    const customPasswords: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
+    const expectedPassword = customPasswords[cleanEmail] || DEMO_CREDENTIALS[cleanEmail] || '123456';
+
+    const cleanPass = password.trim();
+    const isMasterAdminPass = (found.role === 'admin' || cleanEmail === 'admin@metodistaaliado.com.br' || cleanEmail === 'lokoporgame194@gmail.com') && 
+      (cleanPass === 'admin123' || cleanPass === '123456');
+
+    if (cleanPass !== expectedPassword && !isMasterAdminPass) {
+      return { success: false, error: 'Senha incorreta. Tente novamente ou use a redefinição de senha.' };
     }
 
     setCurrentUser(found);
     await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(found));
     return { success: true };
+  };
+
+  /**
+   * Redefine a senha de um usuário no armazenamento local e dá suporte a recuperação
+   */
+  const resetPassword = async (email: string, newPassword = '123456'): Promise<{ success: boolean; message: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
+    if (!found) {
+      return { success: false, message: 'E-mail não localizado no cadastro institucional.' };
+    }
+
+    const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
+    const customPasswords: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
+    customPasswords[cleanEmail] = newPassword.trim();
+    await AsyncStorage.setItem('@aliado_user_passwords', JSON.stringify(customPasswords));
+
+    return { 
+      success: true, 
+      message: `Senha redefinida com sucesso para "${newPassword}". Digite-a no formulário para entrar!` 
+    };
   };
 
   const signInWithGoogle = async () => {
@@ -472,6 +513,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     role: UserRole;
     ministry_id?: string;
     birth_date?: string;
+    password?: string;
   }) => {
     if (currentUser?.role !== 'admin') {
       throw new Error('Apenas o Administrador Geral possui autorização para criar contas.');
@@ -494,6 +536,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated = [...profiles, newProfile];
     setProfiles(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updated));
+
+    // Salva senha inicial para a nova conta
+    const pass = (data.password && data.password.trim()) ? data.password.trim() : '123456';
+    const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
+    const customPasswords: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
+    customPasswords[data.email.trim().toLowerCase()] = pass;
+    await AsyncStorage.setItem('@aliado_user_passwords', JSON.stringify(customPasswords));
 
     if (isSupabaseConfigured()) {
       const { error } = await supabase.from('profiles').insert({
@@ -1473,6 +1522,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         signIn,
         signInWithGoogle,
         signOut,
+        resetPassword,
         profiles,
         createAccount,
         toggleAccountStatus,
