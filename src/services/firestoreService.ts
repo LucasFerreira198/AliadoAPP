@@ -126,6 +126,15 @@ export const FirestoreService = {
     await setDoc(doc(db, 'profiles', profile.id), cleanForFirestore(profile), { merge: true });
   },
 
+  async deleteProfile(profileId: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, 'profiles', profileId));
+    } catch (err) {
+      console.warn('[Firestore] Falha ao excluir perfil:', err);
+      throw err;
+    }
+  },
+
   // ========================================================
   // MINISTÉRIOS (MINISTRIES)
   // ========================================================
@@ -137,6 +146,60 @@ export const FirestoreService = {
     } catch (err) {
       console.warn('[Firestore] Falha ao buscar ministérios:', err);
       return INITIAL_MINISTRIES;
+    }
+  },
+
+  async saveMinistry(ministry: Ministry): Promise<void> {
+    await setDoc(doc(db, 'ministries', ministry.id), cleanForFirestore(ministry), { merge: true });
+  },
+
+  async deleteMinistry(ministryId: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, 'ministries', ministryId));
+    } catch (err) {
+      console.warn('[Firestore] Falha ao excluir ministério:', err);
+      throw err;
+    }
+  },
+
+  async deleteAllMinistries(): Promise<void> {
+    try {
+      const snap = await getDocs(collection(db, 'ministries'));
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => {
+        batch.delete(d.ref);
+      });
+      await batch.commit();
+      console.log('[Firestore] Todos os ministérios foram removidos com sucesso.');
+    } catch (err) {
+      console.warn('[Firestore] Falha ao apagar todos os ministérios:', err);
+      throw err;
+    }
+  },
+
+  // ========================================================
+  // CONFIGURAÇÕES DO SISTEMA (APP SETTINGS & FEATURE TOGGLES)
+  // ========================================================
+  async getAppSettings(): Promise<Record<string, boolean> | null> {
+    try {
+      const ref = doc(db, 'app_settings', 'features');
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        return snap.data() as Record<string, boolean>;
+      }
+      return null;
+    } catch (err) {
+      console.warn('[Firestore] Falha ao buscar configurações de recursos:', err);
+      return null;
+    }
+  },
+
+  async saveAppSettings(features: Record<string, boolean>): Promise<void> {
+    try {
+      await setDoc(doc(db, 'app_settings', 'features'), cleanForFirestore(features), { merge: true });
+    } catch (err) {
+      console.warn('[Firestore] Falha ao salvar configurações de recursos:', err);
+      throw err;
     }
   },
 

@@ -12,7 +12,7 @@ service cloud.firestore {
     //   - id: string (optional, <= 128 chars, matches doc ID) [immutable]
     //   - full_name: string (required, 1-100 chars)
     //   - email: string (required, valid email, <= 100 chars)
-    //   - phone: string (required, 8-25 chars)
+    //   - phone: string (optional, 0 or 8-25 chars)
     //   - birth_date: string (optional, <= 15 chars, YYYY-MM-DD)
     //   - role: string (required, one of: admin, pastor, secretaria, maad, leader, volunteer, member)
     //   - avatar_url: string (optional, URL, <= 1000 chars)
@@ -21,6 +21,10 @@ service cloud.firestore {
     //   - ministry_id: string (optional, <= 128 chars)
     //   - ministry_name: string (optional, <= 100 chars)
     //   - is_active: bool (optional)
+    //
+    // Collection: app_settings
+    // Document ID: {settingId} (e.g. features)
+    // Fields: application configuration, feature toggles and global flags
     //
     // Collection: ministries
     // Document ID: {ministryId}
@@ -180,6 +184,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         request.auth.token.role == 'admin' ||
         request.auth.token.email == 'admin@metodistaaliado.com.br' ||
+        request.auth.token.email == 'lokoporgame194@gmail.com' ||
         (hasUserDoc() && getUserDoc().data.role == 'admin')
       );
     }
@@ -227,7 +232,7 @@ service cloud.firestore {
     function getUserRole() {
       return !isAuthenticated() ? null :
         request.auth.token.role != null ? request.auth.token.role :
-        request.auth.token.email == 'admin@metodistaaliado.com.br' ? 'admin' :
+        (request.auth.token.email == 'admin@metodistaaliado.com.br' || request.auth.token.email == 'lokoporgame194@gmail.com') ? 'admin' :
         request.auth.token.email == 'pastor@metodistaaliado.com.br' ? 'pastor' :
         request.auth.token.email == 'maad@metodistaaliado.com.br' ? 'maad' :
         request.auth.token.email == 'secretaria@metodistaaliado.com.br' ? 'secretaria' :
@@ -265,7 +270,7 @@ service cloud.firestore {
       return data.keys().hasOnly(['id', 'full_name', 'email', 'phone', 'birth_date', 'role', 'avatar_url', 'avatarUrl', 'expo_push_token', 'ministry_id', 'ministry_name', 'is_active']) &&
         data.full_name is string && data.full_name.size() >= 1 && data.full_name.size() <= 100 &&
         data.email is string && isValidEmail(data.email) && data.email.size() <= 100 &&
-        data.phone is string && data.phone.size() >= 8 && data.phone.size() <= 25 &&
+        (!('phone' in data) || (data.phone is string && (data.phone.size() == 0 || (data.phone.size() >= 8 && data.phone.size() <= 25)))) &&
         data.role in ['admin', 'pastor', 'secretaria', 'maad', 'leader', 'volunteer', 'member'] &&
         (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
         (!('birth_date' in data) || (data.birth_date is string && data.birth_date.size() <= 15)) &&
@@ -414,20 +419,23 @@ service cloud.firestore {
 
     // 1. PROFILES
     // Read: authenticated user reading their own profile, or pastor/admin reading any profile
-    // Create / Alter role or is_active: strictly admin
-    // Update: user updating their own phone and avatarUrl (cannot change role, is_active, email, etc.)
+    // Create: admin or user creating their own initial volunteer/member profile
+    // Update: admin (can update any field except id) or user updating own profile info (cannot change id, role, email)
+    // Delete: strictly admin
     match /profiles/{userId} {
       allow read: if isAuthenticated() && (isOwner(userId) || isPastorOrAdmin());
 
-      allow create: if isAdmin() && isValidProfile(request.resource.data);
+      allow create: if (isAdmin() && isValidProfile(request.resource.data)) ||
+        (isOwner(userId) && isValidProfile(request.resource.data) && (isAdmin() || request.resource.data.role in ['volunteer', 'member']));
 
-      allow update: if isAuthenticated() && isValidProfile(request.resource.data) && (
+      allow update: if isValidProfile(request.resource.data) && (
         // Admin can update profile fields (id remains unchanged)
         (isAdmin() && areImmutableFieldsUnchanged(['id'])) ||
-        // Regular user can ONLY update their own phone, avatar_url, avatarUrl, or push token
+        // Regular user can update their own profile info (cannot change id, role, email)
         (
           isOwner(userId) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'avatar_url', 'avatarUrl', 'expo_push_token'])
+          areImmutableFieldsUnchanged(['id', 'role', 'email']) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['full_name', 'phone', 'avatar_url', 'avatarUrl', 'expo_push_token', 'birth_date'])
         )
       );
 
@@ -626,6 +634,14 @@ service cloud.firestore {
         areImmutableFieldsUnchanged(['id']);
 
       allow delete: if isSecretariaOrPastorOrAdmin();
+    }
+
+    // 10. APP SETTINGS (CONFIGURAÇÕES GERAIS E FEATURE TOGGLES)
+    // Read: any authenticated church user
+    // Write (create/update/delete): strictly admin
+    match /app_settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     // Default Deny: Reject any unmapped collection or root access

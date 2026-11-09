@@ -12,6 +12,7 @@ interface BadgeProps {
   bgColor?: string;
   textColor?: string;
   icon?: React.ReactNode;
+  size?: 'sm' | 'md';
 }
 
 export const Badge: React.FC<BadgeProps> = ({
@@ -22,6 +23,7 @@ export const Badge: React.FC<BadgeProps> = ({
   bgColor,
   textColor,
   icon,
+  size = 'md',
 }) => {
   const { theme } = useApp();
   const themeColors = getThemeColors(theme);
@@ -55,11 +57,20 @@ export const Badge: React.FC<BadgeProps> = ({
   };
 
   const { bg, text } = getColors();
+  const isSm = size === 'sm';
 
   return (
-    <View style={[styles.badge, { backgroundColor: bg }]}>
+    <View 
+      style={[
+        styles.badge, 
+        { backgroundColor: bg },
+        isSm ? { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 } : null
+      ]}
+    >
       {icon && <View style={styles.iconContainer}>{icon}</View>}
-      <Text style={[styles.label, { color: text }]}>{label}</Text>
+      <Text style={[styles.label, { color: text }, isSm ? { fontSize: 9, letterSpacing: 0.3 } : null]}>
+        {label}
+      </Text>
     </View>
   );
 };

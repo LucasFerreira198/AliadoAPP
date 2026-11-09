@@ -59,6 +59,8 @@ export default function HomeScreen() {
     getTodayBirthdays,
     confirmScheduleAttendance,
     requestScheduleSwap,
+    isFeatureVisible,
+    isFeatureDisabledForAdmin,
     theme
   } = useApp();
 
@@ -205,85 +207,115 @@ export default function HomeScreen() {
             </View>
 
             {/* Barra de Ações Rápidas Pastorais */}
-            <View style={styles.quickBar}>
-              <Button
-                title="+ Nova Meta Multi-Ministérios"
-                onPress={() => router.push('/goals/new')}
-                variant="primary"
-                icon={<Plus size={18} color="#FFFFFF" strokeWidth={2.5} />}
-                style={styles.newGoalBtn}
-              />
-            </View>
+            {isFeatureVisible('goals') && (
+              <View style={styles.quickBar}>
+                <Button
+                  title={isFeatureDisabledForAdmin('goals') ? "+ Nova Meta [DESATIVADA]" : "+ Nova Meta Multi-Ministérios"}
+                  onPress={() => router.push('/goals/new')}
+                  variant={isFeatureDisabledForAdmin('goals') ? "secondary" : "primary"}
+                  icon={<Plus size={18} color="#FFFFFF" strokeWidth={2.5} />}
+                  style={styles.newGoalBtn}
+                />
+              </View>
+            )}
 
             {/* Atalhos Rápidos Pastorais em Grade Estável (Sem conflito de rolagem) */}
             <View style={styles.shortcutsGrid}>
               {/* Central de Aniversariantes */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => router.push('/birthdays')}
-                style={[
-                  styles.shortcutCard, 
-                  { backgroundColor: themeColors.surface, borderColor: themeColors.border },
-                  todayBirthdays.length > 0 ? styles.shortcutCardHighlight : null
-                ]}
-              >
-                <View style={[styles.shortcutIconBox, { backgroundColor: '#FEE2E2' }]}>
-                  <Cake size={20} color="#DC2626" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Aniversários</Text>
-                  <Text style={styles.shortcutSub}>
-                    {todayBirthdays.length > 0 ? `🎉 ${todayBirthdays.length} hoje!` : 'Ver do mês'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              {isFeatureVisible('birthdays') && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => router.push('/birthdays')}
+                  style={[
+                    styles.shortcutCard, 
+                    { backgroundColor: themeColors.surface, borderColor: themeColors.border },
+                    todayBirthdays.length > 0 ? styles.shortcutCardHighlight : null
+                  ]}
+                >
+                  <View style={[styles.shortcutIconBox, { backgroundColor: '#FEE2E2' }]}>
+                    <Cake size={20} color="#DC2626" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Aniversários</Text>
+                      {isFeatureDisabledForAdmin('birthdays') && (
+                        <Badge label="OFF" bgColor="#DC2626" textColor="#FFFFFF" size="sm" />
+                      )}
+                    </View>
+                    <Text style={styles.shortcutSub}>
+                      {todayBirthdays.length > 0 ? `🎉 ${todayBirthdays.length} hoje!` : 'Ver do mês'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {/* MAAD - Gestão Contábil */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => router.push('/maad')}
-                style={[styles.shortcutCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
-              >
-                <View style={[styles.shortcutIconBox, { backgroundColor: '#DCFCE7' }]}>
-                  <Landmark size={20} color="#059669" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>MAAD</Text>
-                  <Text style={styles.shortcutSub}>
-                    R$ {cashSummary.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              {isFeatureVisible('maad') && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => router.push('/maad')}
+                  style={[styles.shortcutCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                >
+                  <View style={[styles.shortcutIconBox, { backgroundColor: '#DCFCE7' }]}>
+                    <Landmark size={20} color="#059669" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>MAAD</Text>
+                      {isFeatureDisabledForAdmin('maad') && (
+                        <Badge label="OFF" bgColor="#DC2626" textColor="#FFFFFF" size="sm" />
+                      )}
+                    </View>
+                    <Text style={styles.shortcutSub}>
+                      R$ {cashSummary.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {/* Calendário da Igreja */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => router.push('/calendar')}
-                style={[styles.shortcutCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
-              >
-                <View style={[styles.shortcutIconBox, { backgroundColor: '#FEF3C7' }]}>
-                  <Calendar size={20} color="#D97706" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Agenda</Text>
-                  <Text style={styles.shortcutSub}>Programação</Text>
-                </View>
-              </TouchableOpacity>
+              {isFeatureVisible('calendar') && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => router.push('/calendar')}
+                  style={[styles.shortcutCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                >
+                  <View style={[styles.shortcutIconBox, { backgroundColor: '#FEF3C7' }]}>
+                    <Calendar size={20} color="#D97706" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Agenda</Text>
+                      {isFeatureDisabledForAdmin('calendar') && (
+                        <Badge label="OFF" bgColor="#DC2626" textColor="#FFFFFF" size="sm" />
+                      )}
+                    </View>
+                    <Text style={styles.shortcutSub}>Programação</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {/* Avisos */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => router.push('/announcements')}
-                style={[styles.shortcutCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
-              >
-                <View style={[styles.shortcutIconBox, { backgroundColor: '#DBEAFE' }]}>
-                  <Bell size={20} color="#2563EB" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Mural</Text>
-                  <Text style={styles.shortcutSub}>Comunicados</Text>
-                </View>
-              </TouchableOpacity>
+              {isFeatureVisible('announcements') && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => router.push('/announcements')}
+                  style={[styles.shortcutCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                >
+                  <View style={[styles.shortcutIconBox, { backgroundColor: '#DBEAFE' }]}>
+                    <Bell size={20} color="#2563EB" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={[styles.shortcutTitle, { color: themeColors.textPrimary }]}>Mural</Text>
+                      {isFeatureDisabledForAdmin('announcements') && (
+                        <Badge label="OFF" bgColor="#DC2626" textColor="#FFFFFF" size="sm" />
+                      )}
+                    </View>
+                    <Text style={styles.shortcutSub}>Comunicados</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* ORÇAMENTOS PENDENTES DE ANÁLISE PASTORAL (LÍDER -> PASTOR -> MAAD) */}
@@ -594,47 +626,55 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* 4 Abas do Líder */}
+            {/* Abas do Líder Filtradas por Feature Toggle */}
             <View style={[styles.leaderTabsRow, { backgroundColor: theme === 'dark' ? '#1E293B' : '#E2E8F0' }]}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setLeaderTab('metas')}
-                style={[styles.leaderTabBtn, leaderTab === 'metas' ? styles.leaderTabBtnActive : null]}
-              >
-                <Text style={[styles.leaderTabText, leaderTab === 'metas' ? styles.leaderTabTextActive : { color: themeColors.textSecondary }]}>
-                  Metas ({leaderGoals.length})
-                </Text>
-              </TouchableOpacity>
+              {isFeatureVisible('goals') && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setLeaderTab('metas')}
+                  style={[styles.leaderTabBtn, leaderTab === 'metas' ? styles.leaderTabBtnActive : null]}
+                >
+                  <Text style={[styles.leaderTabText, leaderTab === 'metas' ? styles.leaderTabTextActive : { color: themeColors.textSecondary }]}>
+                    Metas {isFeatureDisabledForAdmin('goals') ? '(OFF)' : `(${leaderGoals.length})`}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setLeaderTab('escalas')}
-                style={[styles.leaderTabBtn, leaderTab === 'escalas' ? styles.leaderTabBtnActive : null]}
-              >
-                <Text style={[styles.leaderTabText, leaderTab === 'escalas' ? styles.leaderTabTextActive : { color: themeColors.textSecondary }]}>
-                  Escalas ({mySchedules.length})
-                </Text>
-              </TouchableOpacity>
+              {isFeatureVisible('schedules') && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setLeaderTab('escalas')}
+                  style={[styles.leaderTabBtn, leaderTab === 'escalas' ? styles.leaderTabBtnActive : null]}
+                >
+                  <Text style={[styles.leaderTabText, leaderTab === 'escalas' ? styles.leaderTabTextActive : { color: themeColors.textSecondary }]}>
+                    Escalas {isFeatureDisabledForAdmin('schedules') ? '(OFF)' : `(${mySchedules.length})`}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setLeaderTab('orcamentos')}
-                style={[styles.leaderTabBtn, leaderTab === 'orcamentos' ? styles.leaderTabBtnActive : null]}
-              >
-                <Text style={[styles.leaderTabText, leaderTab === 'orcamentos' ? styles.leaderTabTextActive : { color: themeColors.textSecondary }]}>
-                  Orçamentos ({myBudgets.length})
-                </Text>
-              </TouchableOpacity>
+              {isFeatureVisible('budgets') && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setLeaderTab('orcamentos')}
+                  style={[styles.leaderTabBtn, leaderTab === 'orcamentos' ? styles.leaderTabBtnActive : null]}
+                >
+                  <Text style={[styles.leaderTabText, leaderTab === 'orcamentos' ? styles.leaderTabTextActive : { color: themeColors.textSecondary }]}>
+                    Orçamentos {isFeatureDisabledForAdmin('budgets') ? '(OFF)' : `(${myBudgets.length})`}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setLeaderTab('gastos')}
-                style={[styles.leaderTabBtn, leaderTab === 'gastos' ? styles.leaderTabBtnActive : null]}
-              >
-                <Text style={[styles.leaderTabText, leaderTab === 'gastos' ? styles.leaderTabTextActive : { color: themeColors.textSecondary }]}>
-                  Recibos ({myExpenses.length})
-                </Text>
-              </TouchableOpacity>
+              {isFeatureVisible('expenses') && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setLeaderTab('gastos')}
+                  style={[styles.leaderTabBtn, leaderTab === 'gastos' ? styles.leaderTabBtnActive : null]}
+                >
+                  <Text style={[styles.leaderTabText, leaderTab === 'gastos' ? styles.leaderTabTextActive : { color: themeColors.textSecondary }]}>
+                    Recibos {isFeatureDisabledForAdmin('expenses') ? '(OFF)' : `(${myExpenses.length})`}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* ABA 1: METAS */}

@@ -20,7 +20,8 @@ import {
   CashTransaction,
   CashFlowType,
   CashFlowCategory,
-  UserRole
+  UserRole,
+  AppFeatureKey
 } from '../types';
 import { 
   INITIAL_PROFILES, 
@@ -33,6 +34,7 @@ import {
   INITIAL_RECURRING_SCHEDULES,
   INITIAL_BUDGETS,
   INITIAL_CASH_TRANSACTIONS,
+  DEFAULT_FEATURE_SETTINGS,
   DEMO_CREDENTIALS,
   UUIDS
 } from '../services/mockData';
@@ -66,6 +68,20 @@ interface AppContextType {
     password?: string;
   }) => Promise<void>;
   toggleAccountStatus: (userId: string) => Promise<void>;
+  updateAccount: (profile: Profile) => Promise<void>;
+  deleteAccount: (userId: string) => Promise<void>;
+
+  // Gestão de Ministérios (Admin & Pastor)
+  createMinistry: (data: Omit<Ministry, 'id'>) => Promise<void>;
+  updateMinistry: (ministry: Ministry) => Promise<void>;
+  deleteMinistry: (ministryId: string) => Promise<void>;
+  deleteAllMinistries: () => Promise<void>;
+
+  // Feature Toggles (Controle de Módulos em Desenvolvimento)
+  featureSettings: Record<AppFeatureKey, boolean>;
+  toggleFeature: (feature: AppFeatureKey, enabled: boolean) => Promise<void>;
+  isFeatureVisible: (feature: AppFeatureKey) => boolean;
+  isFeatureDisabledForAdmin: (feature: AppFeatureKey) => boolean;
 
   // Tema Claro / Escuro
   theme: AppTheme;
@@ -199,13 +215,19 @@ const STORAGE_KEYS = {
   RECURRING_SCHEDULES: '@aliado_recurring_schedules',
   ANNOUNCEMENTS: '@aliado_announcements',
   CLEANUP_FLAG: '@aliado_cleanup_done_v1_1_3',
+  MINISTRIES: '@aliado_ministries',
+  FEATURE_SETTINGS: '@aliado_feature_settings',
+  MINISTRIES_PURGE_FLAG: '@aliado_cleanup_ministries_v1_1_4',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
   const [theme, setTheme] = useState<AppTheme>('light');
   const [profiles, setProfiles] = useState<Profile[]>(INITIAL_PROFILES);
-  const [ministries] = useState<Ministry[]>(INITIAL_MINISTRIES);
+  const [ministries, setMinistries] = useState<Ministry[]>(INITIAL_MINISTRIES);
+  const [featureSettings, setFeatureSettings] = useState<Record<AppFeatureKey, boolean>>(
+    DEFAULT_FEATURE_SETTINGS as Record<AppFeatureKey, boolean>
+  );
   const [goals, setGoals] = useState<Goal[]>(INITIAL_GOALS);
   const [schedules, setSchedules] = useState<Schedule[]>(INITIAL_SCHEDULES);
   const [announcements, setAnnouncements] = useState<Announcement[]>(INITIAL_ANNOUNCEMENTS);
@@ -221,6 +243,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     (async () => {
       try {
+        // Limpeza de ministérios anteriores a pedido do administrador (v1.1.4)
+        const ministriesPurged = await AsyncStorage.getItem(STORAGE_KEYS.MINISTRIES_PURGE_FLAG);
+        if (!ministriesPurged) {
+          setMinistries([]);
+          await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES, JSON.stringify([]));
+          await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES_PURGE_FLAG, 'true');
+          try {
+            await FirestoreService.deleteAllMinistries();
+          } catch (mErr) {
+            console.warn('[AppContext] Falha ao limpar ministérios no Firestore:', mErr);
+          }
+        } else {
+          const savedMinistries = await AsyncStorage.getItem(STORAGE_KEYS.MINISTRIES);
+          if (savedMinistries) setMinistries(JSON.parse(savedMinistries));
+        }
+
+        // Carrega configurações de módulos (feature toggles)
+        const savedFeatureSettings = await AsyncStorage.getItem(STORAGE_KEYS.FEATURE_SETTINGS);
+        if (savedFeatureSettings) {
+          try {
+            setFeatureSettings({
+              ...DEFAULT_FEATURE_SETTINGS,
+              ...JSON.parse(savedFeatureSettings),
+            } as Record<AppFeatureKey, boolean>);
+          } catch (fsErr) {
+            console.warn('[AppContext] Erro ao carregar featureSettings locais:', fsErr);
+          }
+        }
+
         // Limpeza de contas e dados antigos para deixar apenas Administrador
         const cleanupDone = await AsyncStorage.getItem(STORAGE_KEYS.CLEANUP_FLAG);
         if (!cleanupDone) {
@@ -305,8 +356,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             await Promise.race([
               (async () => {
                 await FirestoreService.seedInitialDataIfEmpty();
-                const [fbProfiles, fbGoals, fbSchedules, fbAnnouncements, fbBudgets, fbExpenses, fbCash, fbEvents] = await Promise.all([
+                const [fbProfiles, fbMinistries, fbSettings, fbGoals, fbSchedules, fbAnnouncements, fbBudgets, fbExpenses, fbCash, fbEvents] = await Promise.all([
                   FirestoreService.getProfiles(),
+                  FirestoreService.getMinistries(),
+                  FirestoreService.getAppSettings(),
                   FirestoreService.getGoals(),
                   FirestoreService.getSchedules(),
                   FirestoreService.getAnnouncements(),
@@ -321,6 +374,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   INITIAL_PROFILES.forEach(p => map.set(p.email.toLowerCase(), p));
                   fbProfiles.forEach(p => map.set(p.email.toLowerCase(), { ...map.get(p.email.toLowerCase()), ...p }));
                   setProfiles(Array.from(map.values()));
+                }
+                if (fbMinistries) {
+                  setMinistries(fbMinistries);
+                  await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES, JSON.stringify(fbMinistries));
+                }
+                if (fbSettings) {
+                  setFeatureSettings(prev => ({ ...prev, ...fbSettings }));
+                  await AsyncStorage.setItem(STORAGE_KEYS.FEATURE_SETTINGS, JSON.stringify(fbSettings));
                 }
                 if (fbGoals.length > 0) setGoals(fbGoals);
                 if (fbSchedules.length > 0) setSchedules(fbSchedules);
@@ -653,6 +714,153 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
     }
+  };
+
+  const updateAccount = async (profile: Profile) => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Apenas o Administrador Geral pode editar contas de usuários.');
+    }
+
+    const updated = profiles.map(p => p.id === profile.id ? profile : p);
+    setProfiles(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updated));
+
+    if (currentUser.id === profile.id) {
+      setCurrentUser(profile);
+      await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(profile));
+    }
+
+    try {
+      await FirestoreService.saveProfile(profile);
+    } catch (fbErr) {
+      console.warn('[Admin] Falha ao salvar perfil editado no Firestore:', fbErr);
+    }
+  };
+
+  const deleteAccount = async (userId: string) => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Apenas o Administrador Geral pode excluir contas.');
+    }
+
+    if (userId === currentUser?.id) {
+      throw new Error('Não é permitido excluir sua própria conta de administrador.');
+    }
+
+    const updated = profiles.filter(p => p.id !== userId);
+    setProfiles(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updated));
+
+    try {
+      await FirestoreService.deleteProfile(userId);
+    } catch (fbErr) {
+      console.warn('[Admin] Falha ao excluir perfil no Firestore:', fbErr);
+    }
+  };
+
+  // ==========================================
+  // GESTÃO DE MINISTÉRIOS (ADMIN & PASTOR)
+  // ==========================================
+  const createMinistry = async (data: Omit<Ministry, 'id'>) => {
+    const isAuthorized = currentUser?.role === 'admin' || currentUser?.role === 'pastor';
+    if (!isAuthorized) {
+      throw new Error('Apenas Administrador ou Pastor podem criar novos ministérios.');
+    }
+
+    const newMinistry: Ministry = {
+      ...data,
+      id: generateUUID('a001'),
+    };
+
+    const updated = [...ministries, newMinistry];
+    setMinistries(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES, JSON.stringify(updated));
+
+    try {
+      await FirestoreService.saveMinistry(newMinistry);
+    } catch (fbErr) {
+      console.warn('[Ministries] Falha ao salvar ministério no Firestore:', fbErr);
+    }
+  };
+
+  const updateMinistry = async (ministry: Ministry) => {
+    const isAuthorized = currentUser?.role === 'admin' || currentUser?.role === 'pastor';
+    if (!isAuthorized) {
+      throw new Error('Apenas Administrador ou Pastor podem editar ministérios.');
+    }
+
+    const updated = ministries.map(m => m.id === ministry.id ? ministry : m);
+    setMinistries(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES, JSON.stringify(updated));
+
+    try {
+      await FirestoreService.saveMinistry(ministry);
+    } catch (fbErr) {
+      console.warn('[Ministries] Falha ao atualizar ministério no Firestore:', fbErr);
+    }
+  };
+
+  const deleteMinistry = async (ministryId: string) => {
+    const isAuthorized = currentUser?.role === 'admin' || currentUser?.role === 'pastor';
+    if (!isAuthorized) {
+      throw new Error('Apenas Administrador ou Pastor podem excluir ministérios.');
+    }
+
+    const updated = ministries.filter(m => m.id !== ministryId);
+    setMinistries(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES, JSON.stringify(updated));
+
+    try {
+      await FirestoreService.deleteMinistry(ministryId);
+    } catch (fbErr) {
+      console.warn('[Ministries] Falha ao excluir ministério no Firestore:', fbErr);
+    }
+  };
+
+  const deleteAllMinistries = async () => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Apenas o Administrador Geral pode apagar todos os ministérios.');
+    }
+
+    setMinistries([]);
+    await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES, JSON.stringify([]));
+
+    try {
+      await FirestoreService.deleteAllMinistries();
+    } catch (fbErr) {
+      console.warn('[Ministries] Falha ao apagar todos os ministérios no Firestore:', fbErr);
+    }
+  };
+
+  // ==========================================
+  // CONTROLE DE RECURSOS / MÓDULOS (FEATURE TOGGLES)
+  // ==========================================
+  const toggleFeature = async (feature: AppFeatureKey, enabled: boolean) => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Apenas o Administrador Geral pode ativar ou desativar módulos.');
+    }
+
+    const updated = {
+      ...featureSettings,
+      [feature]: enabled,
+    };
+
+    setFeatureSettings(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.FEATURE_SETTINGS, JSON.stringify(updated));
+
+    try {
+      await FirestoreService.saveAppSettings(updated);
+    } catch (fbErr) {
+      console.warn('[Settings] Falha ao salvar recurso no Firestore:', fbErr);
+    }
+  };
+
+  const isFeatureVisible = (feature: AppFeatureKey): boolean => {
+    if (currentUser?.role === 'admin') return true;
+    return Boolean(featureSettings[feature] !== false);
+  };
+
+  const isFeatureDisabledForAdmin = (feature: AppFeatureKey): boolean => {
+    return Boolean(currentUser?.role === 'admin' && featureSettings[feature] === false);
   };
 
   // ==========================================
@@ -1684,9 +1892,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         profiles,
         createAccount,
         toggleAccountStatus,
+        updateAccount,
+        deleteAccount,
         theme,
         toggleTheme,
         ministries,
+        createMinistry,
+        updateMinistry,
+        deleteMinistry,
+        deleteAllMinistries,
+        featureSettings,
+        toggleFeature,
+        isFeatureVisible,
+        isFeatureDisabledForAdmin,
         goals,
         schedules,
         createSchedule,

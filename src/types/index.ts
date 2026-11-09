@@ -252,3 +252,23 @@ export interface AppNotification {
   is_read: boolean;
   created_at: string;
 }
+
+// ==========================================
+// CONFIGURAÇÕES DO SISTEMA & CONTROLE DE RECURSOS
+// ==========================================
+
+export type AppFeatureKey = 
+  | 'schedules'       // Escalas
+  | 'goals'           // Metas
+  | 'maad'            // Finanças / Caixa MAAD
+  | 'budgets'         // Orçamentos
+  | 'expenses'        // Despesas Ministeriais
+  | 'announcements'   // Mural de Comunicados
+  | 'calendar'        // Calendário de Cultos & Eventos
+  | 'birthdays'       // Aniversariantes
+  | 'reports';        // Relatórios
+
+export interface AppSettings {
+  features: Record<AppFeatureKey, boolean>;
+}
+

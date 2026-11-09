@@ -68,95 +68,20 @@ export const INITIAL_PROFILES: Profile[] = [
   },
 ];
 
-export const INITIAL_MINISTRIES: Ministry[] = [
-  {
-    id: UUIDS.MIN_MAAD,
-    name: 'MAAD - Administração & Contabilidade',
-    description: 'Aprovação de orçamentos, lançamentos contábeis, tesouraria e fluxo financeiro',
-    color_hex: '#059669',
-    icon_name: 'landmark',
-    leader_id: UUIDS.U_MAAD,
-    leader_name: 'Equipe MAAD',
-    leader_phone: '11988887777',
-    member_count: 5,
-  },
-  {
-    id: UUIDS.MIN_LOUVOR,
-    name: 'Ministério de Louvor',
-    description: 'Adoração e equipes de músicos e vocalistas',
-    color_hex: '#DC2626',
-    icon_name: 'music',
-    leader_id: UUIDS.U_LIDER_LOUVOR,
-    leader_name: 'Mariana Ramos',
-    leader_phone: '11991234567',
-    member_count: 14,
-  },
-  {
-    id: UUIDS.MIN_JOVENS,
-    name: 'Sociedade de Jovens',
-    description: 'Juventude Metodista Aliado, retiros e discipulado',
-    color_hex: '#EA580C',
-    icon_name: 'flame',
-    leader_id: UUIDS.U_LIDER_JOVENS,
-    leader_name: 'Lucas Souza',
-    leader_phone: '11982345678',
-    member_count: 28,
-  },
-  {
-    id: UUIDS.MIN_EBD,
-    name: 'Ministério Infantil & EBD',
-    description: 'Escola Bíblica Dominical e salas temáticas',
-    color_hex: '#F59E0B',
-    icon_name: 'smile',
-    leader_id: UUIDS.U_LIDER_EBD,
-    leader_name: 'Débora Lima',
-    leader_phone: '11973456789',
-    member_count: 12,
-  },
-  {
-    id: UUIDS.MIN_DIACONIA,
-    name: 'Diaconia & Recepção',
-    description: 'Ordem no templo, acolhimento de visitantes e Santa Ceia',
-    color_hex: '#2563EB',
-    icon_name: 'heart-handshake',
-    leader_id: UUIDS.U_LIDER_DIACONIA,
-    leader_name: 'Marcos Vinicius',
-    leader_phone: '11964567890',
-    member_count: 18,
-  },
-  {
-    id: UUIDS.MIN_COMUNICACAO,
-    name: 'Comunicação & Mídia',
-    description: 'Transmissão de cultos, fotografia e mídias sociais',
-    color_hex: '#7C3AED',
-    icon_name: 'camera',
-    member_count: 8,
-  },
-  {
-    id: UUIDS.MIN_MULHERES,
-    name: 'Sociedade de Mulheres',
-    description: 'Intercessão, comunhão e apoio às famílias',
-    color_hex: '#DB2777',
-    icon_name: 'flower-2',
-    member_count: 32,
-  },
-  {
-    id: UUIDS.MIN_HOMENS,
-    name: 'Sociedade de Homens',
-    description: 'Homens metodistas de oração e trabalho',
-    color_hex: '#0F172A',
-    icon_name: 'shield',
-    member_count: 24,
-  },
-  {
-    id: UUIDS.MIN_MISSOES,
-    name: 'Ação Social & Missões',
-    description: 'Distribuição de alimentos e apoio à comunidade',
-    color_hex: '#16A34A',
-    icon_name: 'globe',
-    member_count: 15,
-  }
-];
+// Ministérios apagados a pedido do administrador para cadastro limpo via painel admin
+export const INITIAL_MINISTRIES: Ministry[] = [];
+
+export const DEFAULT_FEATURE_SETTINGS: Record<string, boolean> = {
+  schedules: true,
+  goals: true,
+  maad: true,
+  budgets: true,
+  expenses: true,
+  announcements: true,
+  calendar: true,
+  birthdays: true,
+  reports: true,
+};
 
 export const INITIAL_GOALS: Goal[] = [];
 export const INITIAL_RECURRING_SCHEDULES: RecurringSchedule[] = [];

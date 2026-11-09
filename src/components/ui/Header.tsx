@@ -234,6 +234,29 @@ export const Header: React.FC = () => {
               </Text>
             </TouchableOpacity>
 
+            {currentUser?.role === 'admin' && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  setProfileModalVisible(false);
+                  router.push('/admin');
+                }}
+                style={[
+                  styles.editProfileBtn, 
+                  { 
+                    backgroundColor: isDark ? '#1E293B' : '#FEF3C7', 
+                    borderColor: isDark ? '#D97706' : '#FDE68A',
+                    marginTop: 8
+                  }
+                ]}
+              >
+                <ShieldCheck size={16} color="#D97706" />
+                <Text style={[styles.editProfileBtnText, { color: isDark ? '#FBBF24' : '#B45309' }]}>
+                  Painel do Administrador & Módulos
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={handleLogout}
