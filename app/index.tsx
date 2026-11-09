@@ -577,8 +577,10 @@ export default function HomeScreen() {
                   <Music size={24} color="#FFFFFF" />
                 </View>
                 <View>
-                  <Text style={styles.leaderMinistryName}>{currentUser.ministry_name}</Text>
-                  <Text style={styles.leaderSub}>Líder: {currentUser.full_name}</Text>
+                  <Text style={styles.leaderMinistryName}>{currentUser.ministry_name || 'Administração Geral'}</Text>
+                  <Text style={styles.leaderSub}>
+                    {currentUser.role === 'admin' ? 'Administrador: ' : 'Líder: '}{currentUser.full_name}
+                  </Text>
                 </View>
               </View>
             </View>

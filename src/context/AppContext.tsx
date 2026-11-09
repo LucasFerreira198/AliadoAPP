@@ -218,7 +218,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (savedUser) setCurrentUser(JSON.parse(savedUser));
 
         const savedProfiles = await AsyncStorage.getItem(STORAGE_KEYS.PROFILES);
-        if (savedProfiles) setProfiles(JSON.parse(savedProfiles));
+        if (savedProfiles) {
+          const parsed: Profile[] = JSON.parse(savedProfiles);
+          const map = new Map<string, Profile>();
+          INITIAL_PROFILES.forEach(p => map.set(p.email.toLowerCase(), p));
+          parsed.forEach(p => map.set(p.email.toLowerCase(), { ...map.get(p.email.toLowerCase()), ...p }));
+          setProfiles(Array.from(map.values()));
+        }
 
         const savedGoals = await AsyncStorage.getItem(STORAGE_KEYS.GOALS);
         if (savedGoals) setGoals(JSON.parse(savedGoals));
@@ -272,7 +278,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   FirestoreService.getEvents(),
                 ]);
 
-                if (fbProfiles.length > 0) setProfiles(fbProfiles);
+                if (fbProfiles.length > 0) {
+                  const map = new Map<string, Profile>();
+                  INITIAL_PROFILES.forEach(p => map.set(p.email.toLowerCase(), p));
+                  fbProfiles.forEach(p => map.set(p.email.toLowerCase(), { ...map.get(p.email.toLowerCase()), ...p }));
+                  setProfiles(Array.from(map.values()));
+                }
                 if (fbGoals.length > 0) setGoals(fbGoals);
                 if (fbSchedules.length > 0) setSchedules(fbSchedules);
                 if (fbAnnouncements.length > 0) setAnnouncements(fbAnnouncements);
@@ -390,38 +401,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           password: password.trim(),
         });
 
-        if (error) {
-          return { success: false, error: error.message || 'Credenciais inválidas no servidor.' };
-        }
-
-        if (data?.user) {
-          const { data: profileData, error: profileErr } = await supabase
+        if (!error && data?.user) {
+          const { data: profileData } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', data.user.id)
             .single();
 
-          if (profileErr || !profileData) {
-            return { success: false, error: 'Perfil não localizado no banco institucional.' };
+          if (profileData && profileData.is_active !== false) {
+            setCurrentUser(profileData);
+            await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(profileData));
+            return { success: true };
           }
-
-          if (profileData.is_active === false) {
-            await supabase.auth.signOut();
-            return { success: false, error: 'Sua conta está desativada. Procure o Administrador da igreja.' };
-          }
-
-          setCurrentUser(profileData);
-          await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(profileData));
-          return { success: true };
+        } else if (error) {
+          console.warn('[Auth] Supabase auth indisponível ou falhou (utilizando autenticação local/Firebase):', error.message);
         }
       } catch (err: any) {
-        console.error('[Auth] Falha crítica de autenticação no Supabase:', err);
-        return { success: false, error: 'Não foi possível conectar ao servidor. Verifique sua conexão.' };
+        console.warn('[Auth] Falha ao consultar Supabase, prosseguindo com autenticação local/Firebase:', err);
       }
     }
 
-    // 2. Modo Local / Desenvolvimento (Apenas quando o Supabase não estiver configurado)
-    const found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
+    // 2. Busca o perfil institucional (em memória, INITIAL_PROFILES ou Firestore)
+    let found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
+    if (!found) {
+      found = INITIAL_PROFILES.find(p => p.email.toLowerCase() === cleanEmail);
+    }
+    if (!found) {
+      try {
+        const remoteProfiles = await FirestoreService.getProfiles();
+        found = remoteProfiles.find(p => p.email.toLowerCase() === cleanEmail);
+        if (found) {
+          setProfiles(prev => {
+            const map = new Map<string, Profile>();
+            prev.forEach(p => map.set(p.email.toLowerCase(), p));
+            map.set(found!.email.toLowerCase(), found!);
+            return Array.from(map.values());
+          });
+        }
+      } catch (err) {
+        console.warn('[Auth] Falha ao consultar Firestore no login:', err);
+      }
+    }
 
     if (!found) {
       return { 

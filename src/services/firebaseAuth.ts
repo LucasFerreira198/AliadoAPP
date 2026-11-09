@@ -87,9 +87,27 @@ export async function signInWithGoogleService(): Promise<GoogleAuthResult> {
     if (err.code === 'auth/cancelled-popup-request') {
       return { success: false, error: 'A solicitação de login foi cancelada.' };
     }
+    if (err.code === 'auth/popup-blocked') {
+      return { 
+        success: false, 
+        error: 'A janela de autenticação foi bloqueada pelo navegador. Permita pop-ups para este site ou utilize e-mail e senha.' 
+      };
+    }
+    if (err.code === 'auth/unauthorized-domain') {
+      return { 
+        success: false, 
+        error: 'Domínio web não autorizado no Firebase Console. Para acessar agora, faça login com seu e-mail e senha de administrador.' 
+      };
+    }
+    if (err.code === 'auth/operation-not-allowed') {
+      return { 
+        success: false, 
+        error: 'O provedor Google ainda não foi ativado no Firebase Console (Authentication > Sign-in method).' 
+      };
+    }
     return { 
       success: false, 
-      error: err.message || 'Falha ao autenticar com o Google. Tente novamente.' 
+      error: err.message || 'Falha ao autenticar com o Google. Tente novamente ou use e-mail e senha.' 
     };
   }
 }

@@ -23,7 +23,8 @@ import {
   ShieldCheck, 
   CheckCircle2, 
   UserCheck, 
-  Sparkles 
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
@@ -41,6 +42,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   // Modal de Primeiro Acesso & Recuperação de Senha
   const [helpModalVisible, setHelpModalVisible] = useState(false);
@@ -48,19 +50,29 @@ export default function LoginScreen() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetStatus, setResetStatus] = useState<{ success: boolean; message: string } | null>(null);
 
+  const showAppAlert = (title: string, message?: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(`${title}${message ? '\n\n' + message : ''}`);
+      }
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   const handleLogin = async (overrideEmail?: string, overridePass?: string) => {
     const targetEmail = overrideEmail || email;
     const targetPassword = overridePass || password;
 
     if (!targetEmail.trim() || !targetPassword.trim()) {
-      Alert.alert(
-        'Graça e Paz!', 
-        'Por favor, preencha seu e-mail e sua senha de acesso cadastrada na secretaria.'
-      );
+      const msg = 'Por favor, preencha seu e-mail e sua senha de acesso cadastrada na secretaria.';
+      setLoginError(msg);
+      showAppAlert('Graça e Paz!', msg);
       return;
     }
 
     setLoading(true);
+    setLoginError(null);
     try {
       const res = await signIn(targetEmail.trim(), targetPassword.trim());
       if (res.success) {
@@ -68,10 +80,14 @@ export default function LoginScreen() {
         router.replace('/');
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert('Não foi possível entrar', res.error || 'E-mail ou senha incorretos.');
+        const errMsg = res.error || 'E-mail ou senha incorretos.';
+        setLoginError(errMsg);
+        showAppAlert('Não foi possível entrar', errMsg);
       }
     } catch {
-      Alert.alert('Erro no Sistema', 'Ocorreu uma falha ao autenticar. Verifique sua conexão e tente novamente.');
+      const errMsg = 'Ocorreu uma falha ao autenticar. Verifique sua conexão e tente novamente.';
+      setLoginError(errMsg);
+      showAppAlert('Erro no Sistema', errMsg);
     } finally {
       setLoading(false);
     }
@@ -79,6 +95,7 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
+    setLoginError(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const res = await signInWithGoogle();
@@ -87,10 +104,14 @@ export default function LoginScreen() {
         router.replace('/');
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert('Autenticação Google', res.error || 'Não foi possível concluir o login com o Google.');
+        const errMsg = res.error || 'Não foi possível concluir o login com o Google.';
+        setLoginError(errMsg);
+        showAppAlert('Autenticação Google', errMsg);
       }
     } catch (err: any) {
-      Alert.alert('Erro', err.message || 'Falha ao autenticar com o Google.');
+      const errMsg = err.message || 'Falha ao autenticar com o Google.';
+      setLoginError(errMsg);
+      showAppAlert('Erro', errMsg);
     } finally {
       setGoogleLoading(false);
     }
@@ -111,6 +132,7 @@ export default function LoginScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setEmail(resetEmail.trim());
         setPassword('123456');
+        setLoginError(null);
         setTimeout(() => {
           setHelpModalVisible(false);
         }, 1800);
@@ -124,6 +146,7 @@ export default function LoginScreen() {
 
   const handleQuickLogin = (demoEmail: string, demoPass: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setLoginError(null);
     setEmail(demoEmail);
     setPassword(demoPass);
     setHelpModalVisible(false);
@@ -175,6 +198,22 @@ export default function LoginScreen() {
           <Text style={[styles.cardHeaderSub, { color: themeColors.textSecondary }]}>
             Digite suas credenciais institucionais para acessar seus ministérios.
           </Text>
+
+          {/* Banner Visual de Erro (visível em Web e Mobile) */}
+          {loginError ? (
+            <View style={styles.inlineErrorBox}>
+              <View style={styles.inlineErrorContent}>
+                <AlertTriangle size={18} color="#DC2626" style={{ marginRight: 8, flexShrink: 0 }} />
+                <Text style={styles.inlineErrorText}>{loginError}</Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setLoginError(null)} 
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={16} color="#DC2626" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           <Input
             label="E-mail Institucional ou Pessoal *"
@@ -649,5 +688,29 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748B',
     marginTop: 2,
+  },
+  inlineErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+  },
+  inlineErrorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  inlineErrorText: {
+    fontSize: 13,
+    color: '#991B1B',
+    fontWeight: '600',
+    flexShrink: 1,
+    lineHeight: 18,
   },
 });
