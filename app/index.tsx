@@ -415,13 +415,19 @@ export default function HomeScreen() {
                 onPress={() => setSelectedFilter('todas')}
                 style={[
                   styles.kpiCard, 
-                  { backgroundColor: themeColors.surface, borderColor: themeColors.border },
-                  selectedFilter === 'todas' ? styles.kpiActive : null
+                  { 
+                    backgroundColor: selectedFilter === 'todas'
+                      ? (isDark ? 'rgba(37, 99, 235, 0.25)' : '#EFF6FF')
+                      : themeColors.surface, 
+                    borderColor: selectedFilter === 'todas'
+                      ? '#2563EB'
+                      : themeColors.border 
+                  }
                 ]}
               >
-                <Clock size={18} color="#2563EB" />
-                <Text style={[styles.kpiValue, { color: themeColors.textPrimary }]}>{totalGoals}</Text>
-                <Text style={[styles.kpiLabel, { color: themeColors.textSecondary }]}>Metas Totais</Text>
+                <Clock size={18} color={selectedFilter === 'todas' ? (isDark ? '#60A5FA' : '#2563EB') : '#2563EB'} />
+                <Text style={[styles.kpiValue, { color: selectedFilter === 'todas' ? (isDark ? '#FFFFFF' : '#1D4ED8') : themeColors.textPrimary }]}>{totalGoals}</Text>
+                <Text style={[styles.kpiLabel, { color: selectedFilter === 'todas' ? (isDark ? '#93C5FD' : '#1E40AF') : themeColors.textSecondary }]}>Metas Totais</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -429,13 +435,19 @@ export default function HomeScreen() {
                 onPress={() => setSelectedFilter('atrasadas')}
                 style={[
                   styles.kpiCard, 
-                  { backgroundColor: themeColors.surface, borderColor: themeColors.border },
-                  selectedFilter === 'atrasadas' ? styles.kpiActive : null
+                  { 
+                    backgroundColor: selectedFilter === 'atrasadas'
+                      ? (isDark ? 'rgba(220, 38, 38, 0.25)' : '#FEF2F2')
+                      : themeColors.surface, 
+                    borderColor: selectedFilter === 'atrasadas'
+                      ? '#DC2626'
+                      : themeColors.border 
+                  }
                 ]}
               >
                 <AlertTriangle size={18} color="#DC2626" />
                 <Text style={[styles.kpiValue, { color: '#DC2626' }]}>{overdueGoals}</Text>
-                <Text style={[styles.kpiLabel, { color: themeColors.textSecondary }]}>Em Atraso</Text>
+                <Text style={[styles.kpiLabel, { color: selectedFilter === 'atrasadas' ? (isDark ? '#FCA5A5' : '#B91C1C') : themeColors.textSecondary }]}>Em Atraso</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -443,13 +455,19 @@ export default function HomeScreen() {
                 onPress={() => setSelectedFilter('duvidas')}
                 style={[
                   styles.kpiCard, 
-                  { backgroundColor: themeColors.surface, borderColor: themeColors.border },
-                  selectedFilter === 'duvidas' ? styles.kpiActive : null
+                  { 
+                    backgroundColor: selectedFilter === 'duvidas'
+                      ? (isDark ? 'rgba(217, 119, 6, 0.25)' : '#FFFBEB')
+                      : themeColors.surface, 
+                    borderColor: selectedFilter === 'duvidas'
+                      ? '#D97706'
+                      : themeColors.border 
+                  }
                 ]}
               >
                 <HelpCircle size={18} color="#D97706" />
                 <Text style={[styles.kpiValue, { color: '#D97706' }]}>{doubtGoals}</Text>
-                <Text style={[styles.kpiLabel, { color: themeColors.textSecondary }]}>Com Dúvida</Text>
+                <Text style={[styles.kpiLabel, { color: selectedFilter === 'duvidas' ? (isDark ? '#FCD34D' : '#B45309') : themeColors.textSecondary }]}>Com Dúvida</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -457,13 +475,19 @@ export default function HomeScreen() {
                 onPress={() => setSelectedFilter('concluidas')}
                 style={[
                   styles.kpiCard, 
-                  { backgroundColor: themeColors.surface, borderColor: themeColors.border },
-                  selectedFilter === 'concluidas' ? styles.kpiActive : null
+                  { 
+                    backgroundColor: selectedFilter === 'concluidas'
+                      ? (isDark ? 'rgba(22, 163, 74, 0.25)' : '#F0FDF4')
+                      : themeColors.surface, 
+                    borderColor: selectedFilter === 'concluidas'
+                      ? '#16A34A'
+                      : themeColors.border 
+                  }
                 ]}
               >
                 <CheckCircle2 size={18} color="#16A34A" />
                 <Text style={[styles.kpiValue, { color: '#16A34A' }]}>{completedGoals}</Text>
-                <Text style={[styles.kpiLabel, { color: themeColors.textSecondary }]}>Concluídas</Text>
+                <Text style={[styles.kpiLabel, { color: selectedFilter === 'concluidas' ? (isDark ? '#86EFAC' : '#15803D') : themeColors.textSecondary }]}>Concluídas</Text>
               </TouchableOpacity>
             </View>
 
@@ -1128,8 +1152,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   kpiActive: {
-    borderColor: Colors.primary.DEFAULT,
-    backgroundColor: '#FFF5F5',
+    borderWidth: 1.5,
   },
   kpiValue: {
     fontSize: 20,

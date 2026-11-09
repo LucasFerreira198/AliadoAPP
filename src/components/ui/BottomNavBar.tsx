@@ -14,7 +14,7 @@ interface BottomNavBarProps {
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab }) => {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
-  const { theme, budgets, currentUser } = useApp();
+  const { theme, budgets, currentUser, isFeatureVisible, isFeatureDisabledForAdmin } = useApp();
   const themeColors = getThemeColors(theme);
   const isDark = theme === 'dark';
 
@@ -54,32 +54,32 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab }) => {
     },
     {
       id: 'agenda',
-      label: 'Agenda',
+      label: isFeatureDisabledForAdmin('calendar') ? 'Agenda (OFF)' : 'Agenda',
       route: '/calendar',
       Icon: Calendar,
-      authorized: true,
+      authorized: isFeatureVisible('calendar'),
     },
     {
       id: 'escalas',
-      label: 'Escalas',
+      label: isFeatureDisabledForAdmin('schedules') ? 'Escalas (OFF)' : 'Escalas',
       route: '/schedules/edit',
       Icon: Users,
-      authorized: isLeaderOrHigher,
+      authorized: isLeaderOrHigher && isFeatureVisible('schedules'),
     },
     {
       id: 'maad',
-      label: 'MAAD',
+      label: isFeatureDisabledForAdmin('maad') ? 'MAAD (OFF)' : 'MAAD',
       route: '/maad',
       Icon: Landmark,
       badge: pendingCount > 0 ? pendingCount : undefined,
-      authorized: isMaadAuthorized,
+      authorized: isMaadAuthorized && isFeatureVisible('maad'),
     },
     {
       id: 'mural',
-      label: 'Mural',
+      label: isFeatureDisabledForAdmin('announcements') ? 'Mural (OFF)' : 'Mural',
       route: '/announcements',
       Icon: Bell,
-      authorized: true,
+      authorized: isFeatureVisible('announcements'),
     },
   ];
 

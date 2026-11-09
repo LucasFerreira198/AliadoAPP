@@ -27,7 +27,7 @@ import { Badge } from '../src/components/ui/Badge';
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
 import { BottomNavBar } from '../src/components/ui/BottomNavBar';
-import { EventType } from '../src/types';
+import { EventType, ChurchEvent } from '../src/types';
 import { Colors, getThemeColors } from '../src/theme/colors';
 import { isValidISODate, formatDateBR } from '../src/utils/formatters';
 
@@ -88,13 +88,71 @@ export default function CalendarScreen() {
     const dateObj = new Date(currentYear, currentMonth, day);
     const dOfWeek = dateObj.getDay();
     const dayLetter = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'][dOfWeek];
-    const hasEvents = events.some(e => e.event_date === dateStr);
+    const hasRecurring = recurringSchedules.some(r => r.day_of_week === dOfWeek && r.is_active !== false);
+    const hasEvents = events.some(e => e.event_date === dateStr) || hasRecurring;
     return { day, dateStr, dayLetter, dOfWeek, hasEvents };
   });
 
-  const displayedEvents = selectedCalendarDate 
-    ? events.filter(e => e.event_date === selectedCalendarDate)
-    : events;
+  const displayedEvents: ChurchEvent[] = React.useMemo(() => {
+    if (selectedCalendarDate) {
+      const [y, m, d] = selectedCalendarDate.split('-').map(Number);
+      const selDOfWeek = new Date(y, m - 1, d).getDay();
+      const existingForDate = events.filter(e => e.event_date === selectedCalendarDate);
+      
+      const projectedRecurring: ChurchEvent[] = recurringSchedules
+        .filter(r => r.day_of_week === selDOfWeek && r.is_active !== false)
+        .filter(r => !existingForDate.some(e => e.recurring_schedule_id === r.id || e.id === `rec-proj-${r.id}-${selectedCalendarDate}`))
+        .map(r => ({
+          id: `rec-proj-${r.id}-${selectedCalendarDate}`,
+          title: r.title,
+          description: r.description,
+          event_date: selectedCalendarDate,
+          start_time: r.start_time,
+          end_time: r.end_time,
+          location: r.location,
+          event_type: 'culto_fixo' as EventType,
+          recurring_schedule_id: r.id,
+          is_cancelled: false,
+          created_by_name: 'Culto Fixo Semanal',
+        }));
+
+      return [...existingForDate, ...projectedRecurring].sort((a, b) => a.start_time.localeCompare(b.start_time));
+    }
+
+    // Quando nenhuma data específica está filtrada ("Ver Todos" / Agenda geral)
+    const combined = [...events];
+    const today = new Date();
+    // Projeta os cultos fixos das próximas 2 semanas
+    for (let i = 0; i < 14; i++) {
+      const iterDate = new Date(today.getTime() + i * 24 * 60 * 60 * 1000);
+      const dateStr = `${iterDate.getFullYear()}-${String(iterDate.getMonth() + 1).padStart(2, '0')}-${String(iterDate.getDate()).padStart(2, '0')}`;
+      const dOfWeek = iterDate.getDay();
+
+      const forDate = recurringSchedules
+        .filter(r => r.day_of_week === dOfWeek && r.is_active !== false)
+        .filter(r => !combined.some(e => e.event_date === dateStr && (e.recurring_schedule_id === r.id || e.id === `rec-proj-${r.id}-${dateStr}`)))
+        .map(r => ({
+          id: `rec-proj-${r.id}-${dateStr}`,
+          title: r.title,
+          description: r.description,
+          event_date: dateStr,
+          start_time: r.start_time,
+          end_time: r.end_time,
+          location: r.location,
+          event_type: 'culto_fixo' as EventType,
+          recurring_schedule_id: r.id,
+          is_cancelled: false,
+          created_by_name: 'Culto Fixo Semanal',
+        }));
+      combined.push(...forDate);
+    }
+
+    return combined.sort((a, b) => {
+      const dCmp = a.event_date.localeCompare(b.event_date);
+      if (dCmp !== 0) return dCmp;
+      return a.start_time.localeCompare(b.start_time);
+    });
+  }, [selectedCalendarDate, events, recurringSchedules]);
 
   const handleSave = async () => {
     if (!title.trim()) {

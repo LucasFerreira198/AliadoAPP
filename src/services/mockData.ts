@@ -84,7 +84,52 @@ export const DEFAULT_FEATURE_SETTINGS: Record<string, boolean> = {
 };
 
 export const INITIAL_GOALS: Goal[] = [];
-export const INITIAL_RECURRING_SCHEDULES: RecurringSchedule[] = [];
+export const INITIAL_RECURRING_SCHEDULES: RecurringSchedule[] = [
+  {
+    id: 'rec-culto-terca',
+    title: 'Culto de Oração e Doutrina',
+    day_of_week: 2,
+    day_name: 'Terça-feira',
+    start_time: '19:30',
+    end_time: '21:00',
+    location: 'Templo Principal',
+    description: 'Momento semanal de clamor, oração comunitária e estudo da Palavra de Deus.',
+    is_active: true,
+  },
+  {
+    id: 'rec-culto-quinta',
+    title: 'Culto da Família / Quinta com Deus',
+    day_of_week: 4,
+    day_name: 'Quinta-feira',
+    start_time: '19:30',
+    end_time: '21:00',
+    location: 'Templo Principal',
+    description: 'Reunião de adoração, edificação familiar e testemunhos de fé.',
+    is_active: true,
+  },
+  {
+    id: 'rec-ebd-domingo',
+    title: 'Escola Bíblica Dominical (EBD)',
+    day_of_week: 0,
+    day_name: 'Domingo',
+    start_time: '09:00',
+    end_time: '10:30',
+    location: 'Templo Principal',
+    description: 'Classes de aprendizado bíblico para crianças, adolescentes, jovens e adultos.',
+    is_active: true,
+  },
+  {
+    id: 'rec-culto-domingo',
+    title: 'Culto de Celebração da Família',
+    day_of_week: 0,
+    day_name: 'Domingo',
+    start_time: '19:00',
+    end_time: '21:00',
+    location: 'Templo Principal',
+    description: 'Grande celebração com louvor congregacional, ministração pastoral e comunhão.',
+    is_active: true,
+  },
+];
 export const INITIAL_EVENTS: ChurchEvent[] = [];
 export const INITIAL_SCHEDULES: Schedule[] = [];
 export const INITIAL_BUDGETS: Budget[] = [];

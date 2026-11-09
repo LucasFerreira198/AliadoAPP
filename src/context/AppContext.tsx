@@ -196,6 +196,7 @@ interface AppContextType {
     phone?: string;
     email?: string;
     avatar_url?: string;
+    birth_date?: string;
   }) => Promise<void>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   resetAllDataExceptAdmin: () => Promise<void>;
@@ -327,7 +328,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (savedEvents) setEvents(JSON.parse(savedEvents));
 
         const savedRecurring = await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_SCHEDULES);
-        if (savedRecurring) setRecurringSchedules(JSON.parse(savedRecurring));
+        if (savedRecurring) {
+          const parsedRec = JSON.parse(savedRecurring);
+          if (Array.isArray(parsedRec) && parsedRec.length > 0) {
+            setRecurringSchedules(parsedRec);
+          } else {
+            setRecurringSchedules(INITIAL_RECURRING_SCHEDULES);
+          }
+        } else {
+          setRecurringSchedules(INITIAL_RECURRING_SCHEDULES);
+        }
 
         const savedBudgets = await AsyncStorage.getItem(STORAGE_KEYS.BUDGETS);
         if (savedBudgets) setBudgets(JSON.parse(savedBudgets));
@@ -361,7 +371,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             await Promise.race([
               (async () => {
                 await FirestoreService.seedInitialDataIfEmpty();
-                const [fbProfiles, fbMinistries, fbSettings, fbGoals, fbSchedules, fbAnnouncements, fbBudgets, fbExpenses, fbCash, fbEvents] = await Promise.all([
+                const [fbProfiles, fbMinistries, fbSettings, fbGoals, fbSchedules, fbAnnouncements, fbBudgets, fbExpenses, fbCash, fbEvents, fbRecurring] = await Promise.all([
                   FirestoreService.getProfiles(),
                   FirestoreService.getMinistries(),
                   FirestoreService.getAppSettings(),
@@ -372,6 +382,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   FirestoreService.getExpenses(),
                   FirestoreService.getCashTransactions(),
                   FirestoreService.getEvents(),
+                  FirestoreService.getRecurringSchedules(),
                 ]);
 
                 if (fbProfiles.length > 0) {
@@ -446,6 +457,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 if (fbExpenses.length > 0) setExpenses(fbExpenses);
                 if (fbCash.length > 0) setCashTransactions(fbCash);
                 if (fbEvents.length > 0) setEvents(fbEvents);
+                if (fbRecurring.length > 0) {
+                  setRecurringSchedules(fbRecurring);
+                  AsyncStorage.setItem(STORAGE_KEYS.RECURRING_SCHEDULES, JSON.stringify(fbRecurring));
+                }
               })(),
               timeoutPromise
             ]);
@@ -952,6 +967,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     phone?: string;
     email?: string;
     avatar_url?: string;
+    birth_date?: string;
   }) => {
     if (!currentUser) throw new Error('Usuário não autenticado.');
 
@@ -1207,6 +1223,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await supabase.from('recurring_schedules').insert(newRec);
     }
 
+    try {
+      await FirestoreService.saveRecurringSchedule(newRec);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar culto fixo no Firestore:', fbErr);
+    }
+
     await scheduleLocalNotification(
       'Culto Fixo Adicionado ao Calendário! ⛪',
       `${data.title} acontecerá todo(a) ${data.day_name} às ${data.start_time}.`
@@ -1260,19 +1282,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const cancelSingleEvent = async (eventId: string, reason: string) => {
-    const updated = events.map(e => e.id === eventId ? {
-      ...e,
-      is_cancelled: true,
-      cancelled_reason: reason,
-    } : e);
+    const existing = events.find(e => e.id === eventId);
+    let targetEvent: ChurchEvent;
+    let updated: ChurchEvent[];
+
+    if (existing) {
+      targetEvent = {
+        ...existing,
+        is_cancelled: true,
+        cancelled_reason: reason,
+      };
+      updated = events.map(e => e.id === eventId ? targetEvent : e);
+    } else {
+      // Evento virtual projetado a partir de um culto fixo recorrente (`rec-proj-${recId}-${dateStr}`)
+      const match = eventId.match(/^rec-proj-(.+)-(\d{4}-\d{2}-\d{2})$/);
+      const recId = match ? match[1] : '';
+      const dateStr = match ? match[2] : new Date().toISOString().slice(0, 10);
+      const rec = recurringSchedules.find(r => r.id === recId);
+
+      targetEvent = {
+        id: eventId,
+        title: rec?.title || 'Culto Fixo Semanal',
+        description: rec?.description,
+        event_date: dateStr,
+        start_time: rec?.start_time || '19:00',
+        end_time: rec?.end_time,
+        location: rec?.location || 'Templo Principal',
+        event_type: 'culto_fixo',
+        recurring_schedule_id: recId,
+        is_cancelled: true,
+        cancelled_reason: reason,
+        created_by: currentUser?.id,
+        created_by_name: currentUser?.full_name || 'Secretaria Geral',
+      };
+      updated = [targetEvent, ...events];
+    }
+
     setEvents(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updated));
 
     if (isSupabaseConfigured()) {
-      await supabase.from('church_events').update({
-        is_cancelled: true,
-        cancelled_reason: reason,
-      }).eq('id', eventId);
+      await supabase.from('church_events').upsert(targetEvent);
+    }
+
+    try {
+      await FirestoreService.saveEvent(targetEvent);
+    } catch (fbErr) {
+      console.warn('[Firestore] Falha ao salvar evento cancelado:', fbErr);
     }
 
     await scheduleLocalNotification(
@@ -1282,19 +1338,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const restoreSingleEvent = async (eventId: string) => {
-    const updated = events.map(e => e.id === eventId ? {
-      ...e,
-      is_cancelled: false,
-      cancelled_reason: undefined,
-    } : e);
+    const existing = events.find(e => e.id === eventId);
+    if (!existing) return;
+
+    let updated: ChurchEvent[];
+    if (eventId.startsWith('rec-proj-')) {
+      // Remove o override de cancelamento para que a projeção do culto volte a ser ativa
+      updated = events.filter(e => e.id !== eventId);
+    } else {
+      updated = events.map(e => e.id === eventId ? {
+        ...e,
+        is_cancelled: false,
+        cancelled_reason: undefined,
+      } : e);
+    }
+
     setEvents(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updated));
 
-    if (isSupabaseConfigured()) {
-      await supabase.from('church_events').update({
-        is_cancelled: false,
-        cancelled_reason: null,
-      }).eq('id', eventId);
+    if (eventId.startsWith('rec-proj-')) {
+      try {
+        await FirestoreService.deleteEvent(eventId);
+      } catch (err) {
+        console.warn('[Firestore] Falha ao remover override de cancelamento:', err);
+      }
+    } else {
+      const restored = updated.find(e => e.id === eventId);
+      if (restored) {
+        try {
+          await FirestoreService.saveEvent(restored);
+        } catch (fbErr) {
+          console.warn('[Firestore] Falha ao salvar restauração de evento:', fbErr);
+        }
+      }
     }
   };
 

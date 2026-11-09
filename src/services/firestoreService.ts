@@ -24,6 +24,7 @@ import type {
   CashTransaction,
   Announcement,
   ChurchEvent,
+  RecurringSchedule,
   Budget,
   BudgetStatus,
 } from '../types';
@@ -37,6 +38,7 @@ import {
   INITIAL_EXPENSES,
   INITIAL_CASH_TRANSACTIONS,
   INITIAL_EVENTS,
+  INITIAL_RECURRING_SCHEDULES,
 } from './mockData';
 
 export const FirestoreService = {
@@ -349,5 +351,40 @@ export const FirestoreService = {
 
   async saveEvent(event: ChurchEvent): Promise<void> {
     await setDoc(doc(db, 'church_events', event.id), cleanForFirestore(event), { merge: true });
+  },
+
+  async deleteEvent(eventId: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, 'church_events', eventId));
+    } catch (err) {
+      console.warn('[Firestore] Falha ao excluir evento:', err);
+    }
+  },
+
+  // ========================================================
+  // CULTOS FIXOS RECORRENTES (RECURRING SCHEDULES)
+  // ========================================================
+  async getRecurringSchedules(): Promise<RecurringSchedule[]> {
+    try {
+      const snap = await getDocs(collection(db, 'recurring_schedules'));
+      if (snap.empty) return INITIAL_RECURRING_SCHEDULES;
+      return snap.docs.map(d => ({ ...d.data(), id: d.id } as RecurringSchedule));
+    } catch (err) {
+      console.warn('[Firestore] Falha ao buscar cultos fixos recorrentes:', err);
+      return INITIAL_RECURRING_SCHEDULES;
+    }
+  },
+
+  async saveRecurringSchedule(schedule: RecurringSchedule): Promise<void> {
+    await setDoc(doc(db, 'recurring_schedules', schedule.id), cleanForFirestore(schedule), { merge: true });
+  },
+
+  async deleteRecurringSchedule(scheduleId: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, 'recurring_schedules', scheduleId));
+    } catch (err) {
+      console.warn('[Firestore] Falha ao excluir culto fixo:', err);
+      throw err;
+    }
   },
 };

@@ -189,11 +189,42 @@ export default function AdminScreen() {
   const [accFullName, setAccFullName] = useState('');
   const [accEmail, setAccEmail] = useState('');
   const [accPhone, setAccPhone] = useState('');
+  const [accBirthDate, setAccBirthDate] = useState('');
   const [accPassword, setAccPassword] = useState('123456');
   const [accRole, setAccRole] = useState<UserRole>('leader');
   const [accMinistryId, setAccMinistryId] = useState('');
   const [savingAccount, setSavingAccount] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const formatIsoToBrDate = (iso?: string): string => {
+    if (!iso) return '';
+    const parts = iso.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return iso;
+  };
+
+  const formatBrDateToIso = (br?: string): string | undefined => {
+    if (!br) return undefined;
+    const clean = br.trim();
+    const parts = clean.split('/');
+    if (parts.length === 3 && parts[2].length === 4) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return clean.includes('-') ? clean : undefined;
+  };
+
+  const handleBirthDateChange = (text: string) => {
+    const digits = text.replace(/\D/g, '').slice(0, 8);
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+    setAccBirthDate(formatted);
+  };
 
   // Estado: Criação / Edição de Ministérios (Suporte a Múltiplos Líderes)
   const [showMinistryModal, setShowMinistryModal] = useState(false);
@@ -233,6 +264,7 @@ export default function AdminScreen() {
     setAccFullName('');
     setAccEmail('');
     setAccPhone('');
+    setAccBirthDate('');
     setAccPassword('123456');
     setAccRole('leader');
     setAccMinistryId(ministries[0]?.id || '');
@@ -244,6 +276,7 @@ export default function AdminScreen() {
     setAccFullName(p.full_name);
     setAccEmail(p.email);
     setAccPhone(p.phone || '');
+    setAccBirthDate(formatIsoToBrDate(p.birth_date));
     setAccPassword('');
     setAccRole(p.role);
     setAccMinistryId(p.ministry_id || '');
@@ -260,6 +293,7 @@ export default function AdminScreen() {
 
     setSavingAccount(true);
     try {
+      const parsedBirthDate = formatBrDateToIso(accBirthDate);
       if (editingUserId) {
         // Atualizando conta existente
         const target = profiles.find(p => p.id === editingUserId);
@@ -271,6 +305,7 @@ export default function AdminScreen() {
           full_name: accFullName.trim(),
           email: accEmail.trim().toLowerCase(),
           phone: accPhone.trim(),
+          birth_date: parsedBirthDate,
           role: accRole,
           ministry_id: accRole === 'leader' || accRole === 'volunteer' ? accMinistryId : undefined,
           ministry_name: (accRole === 'leader' || accRole === 'volunteer') ? ministryObj?.name : undefined,
@@ -284,6 +319,7 @@ export default function AdminScreen() {
           full_name: accFullName.trim(),
           email: accEmail.trim().toLowerCase(),
           phone: accPhone.trim(),
+          birth_date: parsedBirthDate,
           role: accRole,
           ministry_id: (accRole === 'leader' || accRole === 'volunteer') ? accMinistryId : undefined,
           password: accPassword.trim() || '123456',
@@ -657,6 +693,15 @@ export default function AdminScreen() {
                 keyboardType="phone-pad"
               />
 
+              <Input
+                label="Data de Nascimento (DD/MM/AAAA) - Aniversários"
+                placeholder="Ex: 15/04/1990"
+                value={accBirthDate}
+                onChangeText={handleBirthDateChange}
+                keyboardType="numeric"
+                maxLength={10}
+              />
+
               {!editingUserId && (
                 <Input
                   label="Senha Inicial (padrão: 123456)"
@@ -818,6 +863,14 @@ export default function AdminScreen() {
                         <View style={styles.contactRow}>
                           <Phone size={12} color={themeColors.textSecondary} />
                           <Text style={[styles.contactText, { color: themeColors.textSecondary }]}>{p.phone}</Text>
+                        </View>
+                      ) : null}
+
+                      {p.birth_date ? (
+                        <View style={styles.contactRow}>
+                          <Text style={[styles.contactText, { color: '#F59E0B', fontWeight: '700' }]}>
+                            🎂 {formatIsoToBrDate(p.birth_date)}
+                          </Text>
                         </View>
                       ) : null}
                     </View>

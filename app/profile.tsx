@@ -50,10 +50,41 @@ export default function ProfileScreen() {
   const isDark = theme === 'dark';
 
   // Estados dos Dados Pessoais
+  const formatIsoToBrDate = (iso?: string): string => {
+    if (!iso) return '';
+    const parts = iso.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return iso;
+  };
+
+  const formatBrDateToIso = (br?: string): string | undefined => {
+    if (!br) return undefined;
+    const clean = br.trim();
+    const parts = clean.split('/');
+    if (parts.length === 3 && parts[2].length === 4) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return clean.includes('-') ? clean : undefined;
+  };
+
   const [fullName, setFullName] = useState(currentUser?.full_name || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
+  const [birthDate, setBirthDate] = useState(formatIsoToBrDate(currentUser?.birth_date));
   const [savingBasic, setSavingBasic] = useState(false);
   const [basicFeedback, setBasicFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleBirthDateChange = (text: string) => {
+    const digits = text.replace(/\D/g, '').slice(0, 8);
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+    setBirthDate(formatted);
+  };
 
   // Estados de Troca de E-mail com Código de Confirmação
   const [newEmail, setNewEmail] = useState('');
@@ -154,6 +185,7 @@ export default function ProfileScreen() {
       await updateUserProfile({
         full_name: fullName.trim(),
         phone: phone.trim(),
+        birth_date: formatBrDateToIso(birthDate),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setBasicFeedback({ type: 'success', text: 'Seus dados cadastrais foram atualizados com sucesso!' });
@@ -419,6 +451,15 @@ export default function ProfileScreen() {
             value={phone}
             onChangeText={setPhone}
             keyboardType="phone-pad"
+          />
+
+          <Input
+            label="Data de Nascimento (DD/MM/AAAA) - Aniversários"
+            placeholder="Ex: 15/04/1990"
+            value={birthDate}
+            onChangeText={handleBirthDateChange}
+            keyboardType="numeric"
+            maxLength={10}
           />
 
           <Button

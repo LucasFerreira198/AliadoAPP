@@ -160,6 +160,19 @@ service cloud.firestore {
     //   - created_by: string (optional, <= 128 chars)
     //   - created_by_name: string (optional, <= 100 chars)
     //
+    // Collection: recurring_schedules
+    // Document ID: {scheduleId}
+    // Fields:
+    //   - id: string (optional, <= 128 chars) [immutable]
+    //   - title: string (required, 1-200 chars)
+    //   - day_of_week: number (required, 0-6: 0=Domingo, 1=Segunda, ..., 6=Sábado)
+    //   - day_name: string (required, 1-50 chars)
+    //   - start_time: string (required, <= 20 chars)
+    //   - end_time: string (required, <= 20 chars)
+    //   - location: string (required, 1-200 chars)
+    //   - description: string (optional, <= 2000 chars)
+    //   - is_active: bool (required)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -455,34 +468,58 @@ service cloud.firestore {
         (!('created_by_name' in data) || (data.created_by_name is string && data.created_by_name.size() <= 100));
     }
 
+    function isValidRecurringSchedule(data) {
+      return data.keys().hasOnly(['id', 'title', 'day_of_week', 'day_name', 'start_time', 'end_time', 'location', 'description', 'is_active']) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.day_of_week is number && data.day_of_week >= 0 && data.day_of_week <= 6 &&
+        data.day_name is string && data.day_name.size() >= 1 && data.day_name.size() <= 50 &&
+        data.start_time is string && data.start_time.size() >= 1 && data.start_time.size() <= 20 &&
+        data.end_time is string && data.end_time.size() >= 1 && data.end_time.size() <= 20 &&
+        data.location is string && data.location.size() >= 1 && data.location.size() <= 200 &&
+        data.is_active is bool &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000));
+    }
+
     // ===============================================================
     // Rules Definition
     // ===============================================================
 
     // 1. PROFILES
     // Read: any authenticated church user (allows team schedules, rosters, and birthday queries)
-    // Create: admin or authenticated user initializing their own profile (e.g. initial Google login)
-    // Update: admin (can update any field except immutable id), owner with verified admin email, or regular user updating self fields
-    // Delete: strictly admin
+    // Create: admin or authenticated user initializing their own profile (cannot self-assign admin unless verified email admin)
+    // Update: admin (can update any field except immutable id), or owner updating profile fields (cannot elevate to admin unless verified admin email)
+    // Delete: admin or authenticated user deleting duplicate/secondary doc associated with their own email
     match /profiles/{userId} {
       allow read: if isAuthenticated();
 
       allow create: if isAuthenticated() &&
-        isValidProfile(request.resource.data) &&
-        (isAdmin() || isOwner(userId));
+        isValidProfile(request.resource.data) && (
+          isAdmin() ||
+          (isOwner(userId) && (request.resource.data.role != 'admin' || isEmailAdmin()))
+        );
 
       allow update: if isAuthenticated() && isValidProfile(request.resource.data) && (
-        // Admin or owner with verified admin email can update profile fields (id remains unchanged)
-        ((isAdmin() || (isOwner(userId) && isEmailAdmin())) && areImmutableFieldsUnchanged(['id'])) ||
-        // Regular user can update their own profile info (cannot change id, role, email)
+        // Admin can update any profile (id remains immutable)
+        (isAdmin() && areImmutableFieldsUnchanged(['id'])) ||
+        // Profile owner can update their own profile fields (id immutable; cannot elevate to admin unless verified admin email)
         (
-          isOwner(userId) &&
-          areImmutableFieldsUnchanged(['id', 'role', 'email']) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['full_name', 'phone', 'avatar_url', 'avatarUrl', 'expo_push_token', 'birth_date'])
+          (
+            isOwner(userId) ||
+            (request.auth.token.email != null && ('email' in resource.data) &&
+             (resource.data.email == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower()))
+          ) &&
+          areImmutableFieldsUnchanged(['id']) &&
+          (request.resource.data.role != 'admin' || isEmailAdmin())
         )
       );
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (
+        isAuthenticated() &&
+        request.auth.token.email != null &&
+        ('email' in resource.data) &&
+        (resource.data.email == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower())
+      );
     }
 
     // 2. MINISTRIES
@@ -679,7 +716,22 @@ service cloud.firestore {
       allow delete: if isSecretariaOrPastorOrAdmin();
     }
 
-    // 10. APP SETTINGS (CONFIGURAÇÕES GERAIS E FEATURE TOGGLES)
+    // 10. RECURRING SCHEDULES (CULTOS FIXOS & PROGRAMAÇÃO SEMANAL)
+    // Read: any authenticated church user
+    // Write (create/update/delete): secretaria, pastor or admin
+    match /recurring_schedules/{scheduleId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isSecretariaOrPastorOrAdmin() && isValidRecurringSchedule(request.resource.data);
+
+      allow update: if isSecretariaOrPastorOrAdmin() &&
+        isValidRecurringSchedule(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id']);
+
+      allow delete: if isSecretariaOrPastorOrAdmin();
+    }
+
+    // 11. APP SETTINGS (CONFIGURAÇÕES GERAIS E FEATURE TOGGLES)
     // Read: any authenticated church user
     // Write (create/update/delete): strictly admin
     match /app_settings/{settingId} {
