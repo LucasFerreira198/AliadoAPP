@@ -427,44 +427,8 @@ export default function LoginScreen() {
                       <UserCheck size={18} color="#D97706" />
                       <View>
                         <Text style={[styles.quickTitle, { color: '#D97706' }]}>👑 Lucas Ferreira (Admin)</Text>
-                        <Text style={styles.quickSub}>lokoporgame194@gmail.com (Conta Pessoal Admin)</Text>
+                        <Text style={styles.quickSub}>lokoporgame194@gmail.com (Conta Admin)</Text>
                       </View>
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* Pastor */}
-                  <TouchableOpacity
-                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', borderColor: themeColors.border }]}
-                    onPress={() => handleQuickLogin('pastor@metodistaaliado.com.br', '123456')}
-                    activeOpacity={0.7}
-                  >
-                    <View>
-                      <Text style={[styles.quickTitle, { color: themeColors.textPrimary }]}>📖 Pastor Carlos Alberto</Text>
-                      <Text style={styles.quickSub}>pastor@metodistaaliado.com.br</Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* Secretaria */}
-                  <TouchableOpacity
-                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', borderColor: themeColors.border }]}
-                    onPress={() => handleQuickLogin('secretaria@metodistaaliado.com.br', '123456')}
-                    activeOpacity={0.7}
-                  >
-                    <View>
-                      <Text style={[styles.quickTitle, { color: themeColors.textPrimary }]}>📋 Fernanda Rocha (Secretaria)</Text>
-                      <Text style={styles.quickSub}>secretaria@metodistaaliado.com.br</Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* MAAD */}
-                  <TouchableOpacity
-                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', borderColor: themeColors.border }]}
-                    onPress={() => handleQuickLogin('maad@metodistaaliado.com.br', '123456')}
-                    activeOpacity={0.7}
-                  >
-                    <View>
-                      <Text style={[styles.quickTitle, { color: themeColors.textPrimary }]}>💰 Tesouraria MAAD</Text>
-                      <Text style={styles.quickSub}>maad@metodistaaliado.com.br</Text>
                     </View>
                   </TouchableOpacity>
                 </View>

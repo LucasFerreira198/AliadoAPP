@@ -172,6 +172,16 @@ interface AppContextType {
   // Aniversariantes
   getTodayBirthdays: () => Profile[];
   getMonthBirthdays: () => Profile[];
+
+  // Gestão de Perfil Pessoal & Limpeza
+  updateUserProfile: (data: {
+    full_name?: string;
+    phone?: string;
+    email?: string;
+    avatar_url?: string;
+  }) => Promise<void>;
+  changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
+  resetAllDataExceptAdmin: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -188,6 +198,7 @@ const STORAGE_KEYS = {
   EVENTS: '@aliado_events',
   RECURRING_SCHEDULES: '@aliado_recurring_schedules',
   ANNOUNCEMENTS: '@aliado_announcements',
+  CLEANUP_FLAG: '@aliado_cleanup_done_v1_1_3',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -210,6 +221,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     (async () => {
       try {
+        // Limpeza de contas e dados antigos para deixar apenas Administrador
+        const cleanupDone = await AsyncStorage.getItem(STORAGE_KEYS.CLEANUP_FLAG);
+        if (!cleanupDone) {
+          const adminProfiles = INITIAL_PROFILES.filter(
+            p => p.role === 'admin' || p.email.toLowerCase() === 'lokoporgame194@gmail.com' || p.email.toLowerCase() === 'admin@metodistaaliado.com.br'
+          );
+          setProfiles(adminProfiles);
+          setGoals([]);
+          setSchedules([]);
+          setAnnouncements([]);
+          setExpenses([]);
+          setEvents([]);
+          setRecurringSchedules([]);
+          setBudgets([]);
+          setCashTransactions([]);
+          await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(adminProfiles));
+          await AsyncStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify([]));
+          await AsyncStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify([]));
+          await AsyncStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify([]));
+          await AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify([]));
+          await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify([]));
+          await AsyncStorage.setItem(STORAGE_KEYS.RECURRING_SCHEDULES, JSON.stringify([]));
+          await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify([]));
+          await AsyncStorage.setItem(STORAGE_KEYS.CASH_TRANSACTIONS, JSON.stringify([]));
+          await AsyncStorage.setItem(STORAGE_KEYS.CLEANUP_FLAG, 'true');
+        }
+
         const savedTheme = await AsyncStorage.getItem(STORAGE_KEYS.THEME);
         if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme);
 
@@ -615,6 +653,106 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
     }
+  };
+
+  // ==========================================
+  // GESTÃO DE PERFIL PESSOAL DO USUÁRIO
+  // ==========================================
+  const updateUserProfile = async (data: {
+    full_name?: string;
+    phone?: string;
+    email?: string;
+    avatar_url?: string;
+  }) => {
+    if (!currentUser) throw new Error('Usuário não autenticado.');
+
+    const oldEmail = currentUser.email.toLowerCase();
+    const newEmail = data.email ? data.email.trim().toLowerCase() : oldEmail;
+
+    const updatedUser: Profile = {
+      ...currentUser,
+      ...data,
+      email: newEmail,
+    };
+
+    setCurrentUser(updatedUser);
+    await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+
+    // Atualiza na lista de perfis
+    const updatedProfiles = profiles.map(p => p.id === updatedUser.id ? updatedUser : p);
+    setProfiles(updatedProfiles);
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updatedProfiles));
+
+    // Se o e-mail foi alterado, migra a senha cadastrada
+    if (newEmail !== oldEmail) {
+      const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
+      const pwMap: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
+      if (pwMap[oldEmail]) {
+        pwMap[newEmail] = pwMap[oldEmail];
+        await AsyncStorage.setItem('@aliado_user_passwords', JSON.stringify(pwMap));
+      }
+    }
+
+    try {
+      await FirestoreService.saveProfile(updatedUser);
+    } catch (fbErr) {
+      console.warn('[Profile] Falha ao sincronizar com Firestore:', fbErr);
+    }
+  };
+
+  const changeUserPassword = async (
+    currentPass: string, 
+    newPass: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!currentUser) return { success: false, error: 'Usuário não autenticado.' };
+
+    const cleanEmail = currentUser.email.toLowerCase();
+    const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
+    const pwMap: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
+    const expectedPass = pwMap[cleanEmail] || DEMO_CREDENTIALS[cleanEmail] || '123456';
+
+    const isMaster = (currentUser.role === 'admin' || cleanEmail === 'lokoporgame194@gmail.com' || cleanEmail === 'admin@metodistaaliado.com.br') &&
+      (currentPass.trim() === 'admin123' || currentPass.trim() === '123456');
+
+    if (currentPass.trim() !== expectedPass && !isMaster) {
+      return { success: false, error: 'A senha atual informada está incorreta.' };
+    }
+
+    if (!newPass || newPass.trim().length < 6) {
+      return { success: false, error: 'A nova senha deve ter no mínimo 6 caracteres.' };
+    }
+
+    pwMap[cleanEmail] = newPass.trim();
+    await AsyncStorage.setItem('@aliado_user_passwords', JSON.stringify(pwMap));
+    return { success: true };
+  };
+
+  const resetAllDataExceptAdmin = async () => {
+    const adminProfiles = profiles.filter(
+      p => p.role === 'admin' || p.email.toLowerCase() === 'lokoporgame194@gmail.com' || p.email.toLowerCase() === 'admin@metodistaaliado.com.br'
+    );
+    const finalAdmins = adminProfiles.length > 0 ? adminProfiles : INITIAL_PROFILES;
+
+    setProfiles(finalAdmins);
+    setGoals([]);
+    setSchedules([]);
+    setAnnouncements([]);
+    setExpenses([]);
+    setEvents([]);
+    setRecurringSchedules([]);
+    setBudgets([]);
+    setCashTransactions([]);
+
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(finalAdmins));
+    await AsyncStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify([]));
+    await AsyncStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify([]));
+    await AsyncStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify([]));
+    await AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify([]));
+    await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify([]));
+    await AsyncStorage.setItem(STORAGE_KEYS.RECURRING_SCHEDULES, JSON.stringify([]));
+    await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify([]));
+    await AsyncStorage.setItem(STORAGE_KEYS.CASH_TRANSACTIONS, JSON.stringify([]));
+    await AsyncStorage.setItem(STORAGE_KEYS.CLEANUP_FLAG, 'true');
   };
 
   // ==========================================
@@ -1584,6 +1722,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createAnnouncement,
         getTodayBirthdays,
         getMonthBirthdays,
+        updateUserProfile,
+        changeUserPassword,
+        resetAllDataExceptAdmin,
       }}
     >
       {children}

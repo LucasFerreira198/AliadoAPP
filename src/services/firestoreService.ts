@@ -13,7 +13,7 @@ import {
   limit,
   writeBatch,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, cleanForFirestore } from './firebase';
 import type {
   Profile,
   Ministry,
@@ -56,47 +56,47 @@ export const FirestoreService = {
 
       // 1. Perfis
       for (const p of INITIAL_PROFILES) {
-        batch.set(doc(db, 'profiles', p.id), p);
+        batch.set(doc(db, 'profiles', p.id), cleanForFirestore(p));
       }
 
       // 2. Ministérios
       for (const m of INITIAL_MINISTRIES) {
-        batch.set(doc(db, 'ministries', m.id), m);
+        batch.set(doc(db, 'ministries', m.id), cleanForFirestore(m));
       }
 
       // 3. Metas
       for (const g of INITIAL_GOALS) {
-        batch.set(doc(db, 'goals', g.id), g);
+        batch.set(doc(db, 'goals', g.id), cleanForFirestore(g));
       }
 
       // 4. Escalas
       for (const s of INITIAL_SCHEDULES) {
-        batch.set(doc(db, 'schedules', s.id), s);
+        batch.set(doc(db, 'schedules', s.id), cleanForFirestore(s));
       }
 
       // 5. Comunicados
       for (const a of INITIAL_ANNOUNCEMENTS) {
-        batch.set(doc(db, 'announcements', a.id), a);
+        batch.set(doc(db, 'announcements', a.id), cleanForFirestore(a));
       }
 
       // 6. Orçamentos MAAD
       for (const b of INITIAL_BUDGETS) {
-        batch.set(doc(db, 'budgets', b.id), b);
+        batch.set(doc(db, 'budgets', b.id), cleanForFirestore(b));
       }
 
       // 7. Despesas
       for (const e of INITIAL_EXPENSES) {
-        batch.set(doc(db, 'ministry_expenses', e.id), e);
+        batch.set(doc(db, 'ministry_expenses', e.id), cleanForFirestore(e));
       }
 
       // 8. Transações de Caixa
       for (const c of INITIAL_CASH_TRANSACTIONS) {
-        batch.set(doc(db, 'cash_transactions', c.id), c);
+        batch.set(doc(db, 'cash_transactions', c.id), cleanForFirestore(c));
       }
 
       // 9. Eventos
       for (const ev of INITIAL_EVENTS) {
-        batch.set(doc(db, 'church_events', ev.id), ev);
+        batch.set(doc(db, 'church_events', ev.id), cleanForFirestore(ev));
       }
 
       await batch.commit();
@@ -123,7 +123,7 @@ export const FirestoreService = {
   },
 
   async saveProfile(profile: Profile): Promise<void> {
-    await setDoc(doc(db, 'profiles', profile.id), profile, { merge: true });
+    await setDoc(doc(db, 'profiles', profile.id), cleanForFirestore(profile), { merge: true });
   },
 
   // ========================================================
@@ -155,7 +155,7 @@ export const FirestoreService = {
   },
 
   async saveSchedule(schedule: Schedule): Promise<void> {
-    await setDoc(doc(db, 'schedules', schedule.id), schedule, { merge: true });
+    await setDoc(doc(db, 'schedules', schedule.id), cleanForFirestore(schedule), { merge: true });
   },
 
   // ========================================================
@@ -173,11 +173,11 @@ export const FirestoreService = {
   },
 
   async saveGoal(goal: Goal): Promise<void> {
-    await setDoc(doc(db, 'goals', goal.id), goal, { merge: true });
+    await setDoc(doc(db, 'goals', goal.id), cleanForFirestore(goal), { merge: true });
   },
 
   async saveReport(report: Report): Promise<void> {
-    await setDoc(doc(db, 'reports', report.id), report, { merge: true });
+    await setDoc(doc(db, 'reports', report.id), cleanForFirestore(report), { merge: true });
   },
 
   // ========================================================
@@ -195,7 +195,7 @@ export const FirestoreService = {
   },
 
   async saveExpense(expense: MinistryExpense): Promise<void> {
-    await setDoc(doc(db, 'ministry_expenses', expense.id), expense, { merge: true });
+    await setDoc(doc(db, 'ministry_expenses', expense.id), cleanForFirestore(expense), { merge: true });
   },
 
   async updateExpenseStatus(id: string, status: 'approved' | 'rejected'): Promise<void> {
@@ -232,7 +232,7 @@ export const FirestoreService = {
   },
 
   async saveCashTransaction(transaction: CashTransaction): Promise<void> {
-    await setDoc(doc(db, 'cash_transactions', transaction.id), transaction, { merge: true });
+    await setDoc(doc(db, 'cash_transactions', transaction.id), cleanForFirestore(transaction), { merge: true });
   },
 
   // ========================================================
@@ -250,7 +250,7 @@ export const FirestoreService = {
   },
 
   async saveAnnouncement(announcement: Announcement): Promise<void> {
-    await setDoc(doc(db, 'announcements', announcement.id), announcement, { merge: true });
+    await setDoc(doc(db, 'announcements', announcement.id), cleanForFirestore(announcement), { merge: true });
   },
 
   // ========================================================
@@ -268,6 +268,6 @@ export const FirestoreService = {
   },
 
   async saveEvent(event: ChurchEvent): Promise<void> {
-    await setDoc(doc(db, 'church_events', event.id), event, { merge: true });
+    await setDoc(doc(db, 'church_events', event.id), cleanForFirestore(event), { merge: true });
   },
 };

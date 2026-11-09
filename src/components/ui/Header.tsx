@@ -11,7 +11,8 @@ import {
   ShieldCheck, 
   X,
   Mail,
-  Phone
+  Phone,
+  UserCog
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -32,6 +33,7 @@ export const Header: React.FC = () => {
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const themeColors = getThemeColors(theme);
+  const isDark = theme === 'dark';
 
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -217,6 +219,20 @@ export const Header: React.FC = () => {
                 )}
               </View>
             )}
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                setProfileModalVisible(false);
+                router.push('/profile');
+              }}
+              style={[styles.editProfileBtn, { backgroundColor: isDark ? '#334155' : '#EFF6FF', borderColor: isDark ? '#475569' : '#BFDBFE' }]}
+            >
+              <UserCog size={16} color={Colors.primary.DEFAULT} />
+              <Text style={[styles.editProfileBtnText, { color: Colors.primary.DEFAULT }]}>
+                Editar Meu Perfil & Senha
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               activeOpacity={0.8}
@@ -414,12 +430,27 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 13,
   },
-  logoutBtn: {
+  editProfileBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: 46,
+  },
+  editProfileBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: '#FEF2F2',

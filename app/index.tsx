@@ -151,7 +151,16 @@ export default function HomeScreen() {
         {/* ATALHO SUPER ADMIN */}
         {/* ======================================================== */}
         {isAdmin && (
-          <Card style={styles.adminSpecialCard} accentColor="#F59E0B">
+          <Card 
+            style={[
+              styles.adminSpecialCard, 
+              { 
+                backgroundColor: isDark ? '#1E293B' : '#FFFBEB',
+                borderColor: isDark ? 'rgba(245, 158, 11, 0.4)' : '#FDE68A'
+              }
+            ]} 
+            accentColor="#F59E0B"
+          >
             <View style={styles.adminCardRow}>
               <View style={styles.adminIconBox}>
                 <ShieldCheck size={24} color="#FFFFFF" />
@@ -883,8 +892,7 @@ const styles = StyleSheet.create({
   },
   adminSpecialCard: {
     marginBottom: 16,
-    backgroundColor: '#FFFBEB',
-    borderColor: '#FDE68A',
+    borderWidth: 1,
   },
   adminCardRow: {
     flexDirection: 'row',

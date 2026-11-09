@@ -6,7 +6,7 @@ import {
   type UserCredential,
 } from 'firebase/auth';
 import { Platform } from 'react-native';
-import { auth, db } from './firebase';
+import { auth, db, cleanForFirestore } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import type { Profile, UserRole } from '../types';
 import { INITIAL_PROFILES } from './mockData';
@@ -32,7 +32,7 @@ async function syncGoogleUserProfile(user: any): Promise<Profile> {
     const existing = { ...snap.data(), id: snap.id } as Profile;
     if ((email === 'lokoporgame194@gmail.com' || preConfigured?.role === 'admin') && existing.role !== 'admin') {
       existing.role = 'admin';
-      await setDoc(profileRef, { role: 'admin' }, { merge: true });
+      await setDoc(profileRef, cleanForFirestore({ role: 'admin' }), { merge: true });
     }
     return existing;
   }
@@ -42,14 +42,14 @@ async function syncGoogleUserProfile(user: any): Promise<Profile> {
     full_name: user.displayName || preConfigured?.full_name || 'Membro da Igreja',
     email,
     phone: user.phoneNumber || preConfigured?.phone || '',
-    role: (preConfigured?.role || 'volunteer') as UserRole,
+    role: (email === 'lokoporgame194@gmail.com' ? 'admin' : (preConfigured?.role || 'volunteer')) as UserRole,
     ministry_id: preConfigured?.ministry_id,
     ministry_name: preConfigured?.ministry_name,
     avatar_url: user.photoURL || preConfigured?.avatar_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150`,
     is_active: true,
   };
 
-  await setDoc(profileRef, newProfile, { merge: true });
+  await setDoc(profileRef, cleanForFirestore(newProfile), { merge: true });
   return newProfile;
 }
 
