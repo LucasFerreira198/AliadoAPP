@@ -124,6 +124,23 @@ export const FirestoreService = {
 
   async saveProfile(profile: Profile): Promise<void> {
     await setDoc(doc(db, 'profiles', profile.id), cleanForFirestore(profile), { merge: true });
+
+    // Se houver qualquer outro documento no Firestore com o mesmo e-mail (ex: criado pelo Google com UID diferente),
+    // atualiza-o também para garantir consistência total de cargo em todas as sessões!
+    if (profile.email) {
+      try {
+        const cleanEmail = profile.email.toLowerCase().trim();
+        const q = query(collection(db, 'profiles'), where('email', '==', cleanEmail));
+        const snap = await getDocs(q);
+        for (const docSnap of snap.docs) {
+          if (docSnap.id !== profile.id) {
+            await setDoc(docSnap.ref, cleanForFirestore({ ...docSnap.data(), ...profile, id: docSnap.id }), { merge: true });
+          }
+        }
+      } catch (err) {
+        console.warn('[Firestore] Aviso ao sincronizar perfil em documentos com mesmo e-mail:', err);
+      }
+    }
   },
 
   async deleteProfile(profileId: string): Promise<void> {

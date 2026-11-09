@@ -53,8 +53,14 @@ export const Header: React.FC = () => {
         return 'Secretária';
       case 'maad':
         return 'MAAD';
+      case 'leader':
+        return currentUser.ministry_name ? `Líder • ${currentUser.ministry_name.split(' ')[0]}` : 'Líder';
+      case 'volunteer':
+        return currentUser.ministry_name ? `Voluntário • ${currentUser.ministry_name.split(' ')[0]}` : 'Voluntário';
+      case 'member':
+        return 'Membro';
       default:
-        return currentUser.ministry_name?.split(' ')[0] || 'Líder';
+        return 'Membro';
     }
   };
 
@@ -69,8 +75,13 @@ export const Header: React.FC = () => {
         return '#38BDF8';
       case 'maad':
         return '#4ADE80';
+      case 'leader':
+        return '#F97316';
+      case 'volunteer':
+        return '#A855F7';
+      case 'member':
       default:
-        return '#F87171';
+        return '#94A3B8';
     }
   };
 

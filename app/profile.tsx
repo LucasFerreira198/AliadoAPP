@@ -75,6 +75,27 @@ export default function ProfileScreen() {
   const [cleaningData, setCleaningData] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
+  const getRoleBadgeTitle = (role?: string) => {
+    switch (role) {
+      case 'admin':
+        return 'ADMINISTRADOR GERAL';
+      case 'pastor':
+        return 'PASTOR TITULAR';
+      case 'secretaria':
+        return 'SECRETÁRIA';
+      case 'maad':
+        return 'TESOURARIA MAAD';
+      case 'leader':
+        return 'LÍDER DE MINISTÉRIO';
+      case 'volunteer':
+        return 'VOLUNTÁRIO';
+      case 'member':
+        return 'MEMBRO';
+      default:
+        return 'MEMBRO';
+    }
+  };
+
   const showPrompt = (title: string, message: string) => {
     if (Platform.OS === 'web') {
       if (typeof window !== 'undefined' && window.alert) {
@@ -345,7 +366,7 @@ export default function ProfileScreen() {
           <View style={styles.roleBadgeContainer}>
             <ShieldCheck size={14} color="#F59E0B" style={{ marginRight: 4 }} />
             <Text style={styles.roleBadgeText}>
-              {currentUser?.role === 'admin' ? 'ADMINISTRADOR GERAL' : (currentUser?.role || 'MEMBRO').toUpperCase()}
+              {getRoleBadgeTitle(currentUser?.role)}
             </Text>
           </View>
           <Text style={[styles.profileSubtitle, { color: themeColors.textSecondary }]}>

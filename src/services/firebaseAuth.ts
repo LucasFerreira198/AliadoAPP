@@ -7,7 +7,7 @@ import {
 } from 'firebase/auth';
 import { Platform } from 'react-native';
 import { auth, db, cleanForFirestore } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import type { Profile, UserRole } from '../types';
 import { INITIAL_PROFILES } from './mockData';
 
@@ -18,7 +18,8 @@ export interface GoogleAuthResult {
 }
 
 /**
- * Cria ou recupera o perfil institucional no Firestore vinculado à conta Google.
+ * Cria ou recupera o perfil institucional no Firestore vinculado à conta Google,
+ * consolidando contas criadas previamente pelo Administrador por e-mail.
  */
 async function syncGoogleUserProfile(user: any): Promise<Profile> {
   const email = (user.email || '').toLowerCase().trim();
@@ -34,17 +35,50 @@ async function syncGoogleUserProfile(user: any): Promise<Profile> {
     console.warn('[FirebaseAuth] Não foi possível buscar perfil existente por UID:', err);
   }
 
+  // Verifica se existe alguma conta cadastrada pelo Admin com este e-mail no Firestore
+  // (pode ter sido criada com um UUID antes do primeiro login Google do usuário)
+  if (email) {
+    try {
+      const q = query(collection(db, 'profiles'), where('email', '==', email));
+      const querySnap = await getDocs(q);
+      querySnap.docs.forEach(docSnap => {
+        const otherData = docSnap.data() as Profile;
+        if (docSnap.id !== user.uid) {
+          // Se encontrou outra conta criada pelo admin com este e-mail e cargo prioritário
+          if (!existingProfile || (otherData.role && otherData.role !== 'volunteer' && otherData.role !== 'member')) {
+            existingProfile = {
+              ...(existingProfile || {}),
+              ...otherData,
+              id: user.uid,
+              avatar_url: user.photoURL || otherData.avatar_url || existingProfile?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+              full_name: otherData.full_name || user.displayName || existingProfile?.full_name || 'Membro da Igreja',
+            };
+          }
+          // Remove documento legado para manter um único ID determinístico (o UID do Firebase Auth)
+          deleteDoc(docSnap.ref).catch(() => {});
+        } else if (otherData.role && otherData.role !== 'volunteer' && otherData.role !== 'member') {
+          if (existingProfile) {
+            existingProfile.role = otherData.role;
+          }
+        }
+      });
+    } catch (err) {
+      console.warn('[FirebaseAuth] Erro ao consolidar contas por email no Firestore:', err);
+    }
+  }
+
   // Verifica se o e-mail corresponde a um perfil pré-configurado
   const preConfigured = INITIAL_PROFILES.find(p => p.email.toLowerCase() === email);
 
   if (existingProfile) {
     if ((email === 'lokoporgame194@gmail.com' || preConfigured?.role === 'admin') && existingProfile.role !== 'admin') {
       existingProfile.role = 'admin';
-      try {
-        await setDoc(profileRef, cleanForFirestore({ ...existingProfile, role: 'admin' }), { merge: true });
-      } catch (err) {
-        console.warn('[FirebaseAuth] Aviso ao atualizar cargo admin no Firestore:', err);
-      }
+    }
+
+    try {
+      await setDoc(profileRef, cleanForFirestore(existingProfile), { merge: true });
+    } catch (err) {
+      console.warn('[FirebaseAuth] Aviso ao atualizar cargo no Firestore:', err);
     }
     return existingProfile;
   }

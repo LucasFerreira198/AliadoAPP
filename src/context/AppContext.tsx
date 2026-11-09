@@ -375,24 +375,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ]);
 
                 if (fbProfiles.length > 0) {
+                  const roleWeight: Record<string, number> = {
+                    admin: 10,
+                    pastor: 9,
+                    maad: 8,
+                    secretaria: 7,
+                    leader: 6,
+                    volunteer: 2,
+                    member: 1,
+                  };
+
                   setProfiles(prevProfiles => {
                     const map = new Map<string, Profile>();
                     // 1. Perfis base padrão
                     INITIAL_PROFILES.forEach(p => map.set(p.email.toLowerCase(), p));
-                    // 2. Perfis locais atuais (preserva contas criadas e editadas pelo admin)
-                    prevProfiles.forEach(p => map.set(p.email.toLowerCase(), p));
-                    // 3. Perfis remotos (mescla sem sobrescrever alterações locais já aplicadas)
+                    // 2. Perfis locais atuais
+                    prevProfiles.forEach(p => {
+                      const key = p.email.toLowerCase();
+                      const existing = map.get(key);
+                      if (!existing || (roleWeight[p.role] || 0) >= (roleWeight[existing.role] || 0)) {
+                        map.set(key, { ...(existing || {}), ...p });
+                      }
+                    });
+                    // 3. Perfis remotos do Firestore (prevalece se cargo do Firestore for de maior ou igual autoridade)
                     fbProfiles.forEach(p => {
-                      const existing = map.get(p.email.toLowerCase());
-                      if (existing) {
-                        map.set(p.email.toLowerCase(), { ...p, ...existing });
+                      const key = p.email.toLowerCase();
+                      const existing = map.get(key);
+                      if (!existing) {
+                        map.set(key, p);
                       } else {
-                        map.set(p.email.toLowerCase(), p);
+                        const pWeight = roleWeight[p.role] || 0;
+                        const exWeight = roleWeight[existing.role] || 0;
+                        if (pWeight >= exWeight) {
+                          map.set(key, { ...existing, ...p });
+                        } else {
+                          map.set(key, { ...p, ...existing });
+                        }
                       }
                     });
                     const merged = Array.from(map.values());
                     AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(merged));
                     return merged;
+                  });
+
+                  // Atualiza currentUser se seu cargo foi atualizado no Firestore pelo Administrador (ex: promovido a pastor)
+                  setCurrentUser(current => {
+                    if (!current) return null;
+                    const cleanEmail = current.email.toLowerCase().trim();
+                    const latest = fbProfiles.find(p => p.email.toLowerCase().trim() === cleanEmail);
+                    if (latest && latest.role !== current.role) {
+                      const updatedUser = { ...current, ...latest };
+                      SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+                      return updatedUser;
+                    }
+                    return current;
                   });
                 }
                 if (fbMinistries) {
@@ -541,37 +577,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // 2. Busca o perfil institucional (no armazenamento local atualizado, em memória, INITIAL_PROFILES ou Firestore)
+    // 2. Busca o perfil institucional mais recente (prioriza Firestore para capturar promoções de cargo feitas pelo admin)
     let found: Profile | undefined;
     try {
-      const savedProfilesRaw = await AsyncStorage.getItem(STORAGE_KEYS.PROFILES);
-      if (savedProfilesRaw) {
-        const list: Profile[] = JSON.parse(savedProfilesRaw);
-        found = list.find(p => p.email.toLowerCase() === cleanEmail);
+      const remoteProfiles = await FirestoreService.getProfiles();
+      found = remoteProfiles.find(p => p.email.toLowerCase() === cleanEmail);
+      if (found) {
+        setProfiles(prev => {
+          const map = new Map<string, Profile>();
+          prev.forEach(p => map.set(p.email.toLowerCase(), p));
+          map.set(found!.email.toLowerCase(), found!);
+          const updated = Array.from(map.values());
+          AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updated));
+          return updated;
+        });
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[Auth] Falha ao consultar Firestore no login:', err);
+    }
+
+    if (!found) {
+      try {
+        const savedProfilesRaw = await AsyncStorage.getItem(STORAGE_KEYS.PROFILES);
+        if (savedProfilesRaw) {
+          const list: Profile[] = JSON.parse(savedProfilesRaw);
+          found = list.find(p => p.email.toLowerCase() === cleanEmail);
+        }
+      } catch {}
+    }
 
     if (!found) {
       found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
     }
     if (!found) {
       found = INITIAL_PROFILES.find(p => p.email.toLowerCase() === cleanEmail);
-    }
-    if (!found) {
-      try {
-        const remoteProfiles = await FirestoreService.getProfiles();
-        found = remoteProfiles.find(p => p.email.toLowerCase() === cleanEmail);
-        if (found) {
-          setProfiles(prev => {
-            const map = new Map<string, Profile>();
-            prev.forEach(p => map.set(p.email.toLowerCase(), p));
-            map.set(found!.email.toLowerCase(), found!);
-            return Array.from(map.values());
-          });
-        }
-      } catch (err) {
-        console.warn('[Auth] Falha ao consultar Firestore no login:', err);
-      }
     }
 
     if (!found) {
