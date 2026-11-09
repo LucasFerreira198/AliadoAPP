@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -34,9 +34,15 @@ import { Button } from '../src/components/ui/Button';
 import { Colors, getThemeColors } from '../src/theme/colors';
 
 export default function LoginScreen() {
-  const { signIn, signInWithGoogle, resetPassword, theme, toggleTheme } = useApp();
+  const { currentUser, signIn, signInWithGoogle, resetPassword, theme, toggleTheme } = useApp();
   const themeColors = getThemeColors(theme);
   const isDark = theme === 'dark';
+
+  useEffect(() => {
+    if (currentUser) {
+      router.replace('/');
+    }
+  }, [currentUser]);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

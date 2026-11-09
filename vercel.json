@@ -2,11 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npx expo export -p web",
   "outputDirectory": "dist",
-  "cleanUrls": true,
-  "framework": null,
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!assets/|_expo/|favicon.ico|metadata.json).*)",
       "destination": "/index.html"
     }
   ]
