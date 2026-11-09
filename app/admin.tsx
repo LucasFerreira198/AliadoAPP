@@ -7,7 +7,8 @@ import {
   TouchableOpacity, 
   Alert,
   Switch,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import { router } from 'expo-router';
 import { 
@@ -151,10 +152,11 @@ const FEATURE_ITEMS: FeatureItemDef[] = [
 export default function AdminScreen() {
   const { 
     currentUser, 
+    isAuthLoading,
     profiles, 
     ministries, 
     createAccount, 
-    updateAccount,
+    updateAccount, 
     deleteAccount,
     toggleAccountStatus,
     createMinistry,
@@ -173,11 +175,11 @@ export default function AdminScreen() {
   const isAdmin = currentUser?.role === 'admin';
 
   useEffect(() => {
-    if (currentUser && !isAdmin) {
+    if (!isAuthLoading && currentUser && !isAdmin) {
       Alert.alert('Acesso Negado', 'Apenas o Administrador Geral possui autorização para este painel.');
       router.replace('/');
     }
-  }, [currentUser, isAdmin]);
+  }, [currentUser, isAdmin, isAuthLoading]);
 
   const [activeTab, setActiveTab] = useState<AdminTab>('accounts');
 
@@ -193,15 +195,23 @@ export default function AdminScreen() {
   const [savingAccount, setSavingAccount] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  // Estado: Criação / Edição de Ministérios
+  // Estado: Criação / Edição de Ministérios (Suporte a Múltiplos Líderes)
   const [showMinistryModal, setShowMinistryModal] = useState(false);
   const [editingMinistryId, setEditingMinistryId] = useState<string | null>(null);
   const [minName, setMinName] = useState('');
   const [minDescription, setMinDescription] = useState('');
   const [minColor, setMinColor] = useState('#2563EB');
   const [minIcon, setMinIcon] = useState('users');
-  const [minLeaderId, setMinLeaderId] = useState('');
+  const [minLeaderIds, setMinLeaderIds] = useState<string[]>([]);
   const [savingMinistry, setSavingMinistry] = useState(false);
+
+  if (isAuthLoading) {
+    return (
+      <View style={[styles.deniedContainer, { backgroundColor: themeColors.background }]}>
+        <ActivityIndicator size="large" color="#DC2626" />
+      </View>
+    );
+  }
 
   if (!isAdmin) {
     return (
@@ -343,7 +353,7 @@ export default function AdminScreen() {
   };
 
   // ==========================================
-  // HANDLERS: MINISTÉRIOS
+  // HANDLERS: MINISTÉRIOS (SUPORTE A MÚLTIPLOS LÍDERES)
   // ==========================================
   const openNewMinistryModal = () => {
     setEditingMinistryId(null);
@@ -351,7 +361,7 @@ export default function AdminScreen() {
     setMinDescription('');
     setMinColor('#2563EB');
     setMinIcon('users');
-    setMinLeaderId(profiles[0]?.id || '');
+    setMinLeaderIds([]);
     setShowMinistryModal(true);
   };
 
@@ -361,8 +371,16 @@ export default function AdminScreen() {
     setMinDescription(m.description || '');
     setMinColor(m.color_hex || '#2563EB');
     setMinIcon(m.icon_name || 'users');
-    setMinLeaderId(m.leader_id || '');
+    const existingLeaderIds = m.leader_ids || (m.leader_id ? [m.leader_id] : []);
+    setMinLeaderIds(existingLeaderIds);
     setShowMinistryModal(true);
+  };
+
+  const toggleLeaderSelection = (userId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setMinLeaderIds(prev => 
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
   };
 
   const handleSaveMinistry = async () => {
@@ -373,7 +391,10 @@ export default function AdminScreen() {
       return;
     }
 
-    const leader = profiles.find(p => p.id === minLeaderId);
+    const selectedLeaders = profiles.filter(p => minLeaderIds.includes(p.id));
+    const leaderNames = selectedLeaders.map(l => l.full_name);
+    const leaderIds = selectedLeaders.map(l => l.id);
+    const leadersList = selectedLeaders.map(l => ({ id: l.id, name: l.full_name, phone: l.phone }));
 
     setSavingMinistry(true);
     try {
@@ -384,9 +405,12 @@ export default function AdminScreen() {
           description: minDescription.trim(),
           color_hex: minColor,
           icon_name: minIcon,
-          leader_id: leader?.id,
-          leader_name: leader?.full_name,
-          leader_phone: leader?.phone,
+          leader_id: leaderIds[0],
+          leader_name: leaderNames.join(', '),
+          leader_phone: selectedLeaders[0]?.phone,
+          leader_ids: leaderIds,
+          leader_names: leaderNames,
+          leaders: leadersList,
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert('Ministério Atualizado', `O ministério "${minName}" foi atualizado com sucesso!`);
@@ -396,9 +420,12 @@ export default function AdminScreen() {
           description: minDescription.trim(),
           color_hex: minColor,
           icon_name: minIcon,
-          leader_id: leader?.id,
-          leader_name: leader?.full_name,
-          leader_phone: leader?.phone,
+          leader_id: leaderIds[0],
+          leader_name: leaderNames.join(', '),
+          leader_phone: selectedLeaders[0]?.phone,
+          leader_ids: leaderIds,
+          leader_names: leaderNames,
+          leaders: leadersList,
           member_count: 0,
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -901,20 +928,23 @@ export default function AdminScreen() {
                 })}
               </View>
 
-              {/* Seletor de Líder Responsável */}
+              {/* Seletor de Líderes Responsáveis (Multi-Líderes) */}
               {profiles.length > 0 && (
                 <View style={{ marginVertical: 8 }}>
                   <Text style={[styles.formLabel, { color: themeColors.textPrimary }]}>
-                    Líder Responsável:
+                    Líderes Responsáveis ({minLeaderIds.length} selecionado{minLeaderIds.length === 1 ? '' : 's'}):
+                  </Text>
+                  <Text style={{ fontSize: 11, color: themeColors.textSecondary, marginBottom: 6 }}>
+                    Toque nos nomes para selecionar um ou mais líderes para este ministério.
                   </Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
                     {profiles.map(p => {
-                      const isSelected = minLeaderId === p.id;
+                      const isSelected = minLeaderIds.includes(p.id);
                       return (
                         <TouchableOpacity
                           key={p.id}
                           activeOpacity={0.7}
-                          onPress={() => setMinLeaderId(p.id)}
+                          onPress={() => toggleLeaderSelection(p.id)}
                           style={[
                             styles.minChip,
                             {
@@ -923,12 +953,16 @@ export default function AdminScreen() {
                             }
                           ]}
                         >
-                          <Text style={[
-                            styles.minChipText,
-                            { color: isSelected ? '#FFFFFF' : themeColors.textPrimary }
-                          ]}>
-                            {p.full_name}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            {isSelected && <Check size={13} color="#FFFFFF" />}
+                            <Text style={[
+                              styles.minChipText,
+                              { color: isSelected ? '#FFFFFF' : themeColors.textPrimary },
+                              isSelected ? { fontWeight: '800' } : null
+                            ]}>
+                              {p.full_name}
+                            </Text>
+                          </View>
                         </TouchableOpacity>
                       );
                     })}
@@ -977,9 +1011,17 @@ export default function AdminScreen() {
                     {m.description ? (
                       <Text style={[styles.ministryDesc, { color: themeColors.textSecondary }]}>{m.description}</Text>
                     ) : null}
-                    {m.leader_name ? (
+                    {m.leader_names && m.leader_names.length > 0 ? (
+                      <Text style={styles.ministryLeader}>
+                        Líderes ({m.leader_names.length}): {m.leader_names.join(', ')}
+                      </Text>
+                    ) : m.leader_name ? (
                       <Text style={styles.ministryLeader}>Líder: {m.leader_name}</Text>
-                    ) : null}
+                    ) : (
+                      <Text style={[styles.ministryDesc, { color: themeColors.textSecondary, fontStyle: 'italic', marginTop: 2 }]}>
+                        Sem líderes atribuídos
+                      </Text>
+                    )}
                   </View>
                   <View style={styles.actionsColumn}>
                     <TouchableOpacity

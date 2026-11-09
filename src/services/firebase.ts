@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, type Firestore } from 'firebase/firestore';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -16,7 +16,17 @@ const firebaseConfig = {
 
 const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-export const db: Firestore = getFirestore(app);
+// Inicializa Firestore com tolerância a propriedades undefined para evitar falhas do SDK
+let dbInstance: Firestore;
+try {
+  dbInstance = initializeFirestore(app, {
+    ignoreUndefinedProperties: true,
+  });
+} catch {
+  dbInstance = getFirestore(app);
+}
+
+export const db: Firestore = dbInstance;
 export const storage: FirebaseStorage = getStorage(app);
 
 // Inicialização segura do Auth com persistência em AsyncStorage para React Native

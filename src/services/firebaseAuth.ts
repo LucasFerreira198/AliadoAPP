@@ -23,18 +23,30 @@ export interface GoogleAuthResult {
 async function syncGoogleUserProfile(user: any): Promise<Profile> {
   const email = (user.email || '').toLowerCase().trim();
   const profileRef = doc(db, 'profiles', user.uid);
-  const snap = await getDoc(profileRef);
+  let existingProfile: Profile | null = null;
 
-  // Verifica se o e-mail corresponde a um perfil institucional pré-cadastrado (pastor, admin, lider, etc)
+  try {
+    const snap = await getDoc(profileRef);
+    if (snap.exists()) {
+      existingProfile = { ...snap.data(), id: snap.id } as Profile;
+    }
+  } catch (err) {
+    console.warn('[FirebaseAuth] Não foi possível buscar perfil existente por UID:', err);
+  }
+
+  // Verifica se o e-mail corresponde a um perfil pré-configurado
   const preConfigured = INITIAL_PROFILES.find(p => p.email.toLowerCase() === email);
 
-  if (snap.exists()) {
-    const existing = { ...snap.data(), id: snap.id } as Profile;
-    if ((email === 'lokoporgame194@gmail.com' || preConfigured?.role === 'admin') && existing.role !== 'admin') {
-      existing.role = 'admin';
-      await setDoc(profileRef, cleanForFirestore({ role: 'admin' }), { merge: true });
+  if (existingProfile) {
+    if ((email === 'lokoporgame194@gmail.com' || preConfigured?.role === 'admin') && existingProfile.role !== 'admin') {
+      existingProfile.role = 'admin';
+      try {
+        await setDoc(profileRef, cleanForFirestore({ ...existingProfile, role: 'admin' }), { merge: true });
+      } catch (err) {
+        console.warn('[FirebaseAuth] Aviso ao atualizar cargo admin no Firestore:', err);
+      }
     }
-    return existing;
+    return existingProfile;
   }
 
   const newProfile: Profile = {
@@ -42,14 +54,26 @@ async function syncGoogleUserProfile(user: any): Promise<Profile> {
     full_name: user.displayName || preConfigured?.full_name || 'Membro da Igreja',
     email,
     phone: user.phoneNumber || preConfigured?.phone || '',
-    role: (email === 'lokoporgame194@gmail.com' ? 'admin' : (preConfigured?.role || 'volunteer')) as UserRole,
-    ministry_id: preConfigured?.ministry_id,
-    ministry_name: preConfigured?.ministry_name,
-    avatar_url: user.photoURL || preConfigured?.avatar_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150`,
+    role: (email === 'lokoporgame194@gmail.com' || preConfigured?.role === 'admin')
+      ? 'admin'
+      : ((preConfigured?.role as UserRole) || 'volunteer'),
+    avatar_url: user.photoURL || preConfigured?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
     is_active: true,
   };
 
-  await setDoc(profileRef, cleanForFirestore(newProfile), { merge: true });
+  if (preConfigured?.ministry_id) {
+    newProfile.ministry_id = preConfigured.ministry_id;
+  }
+  if (preConfigured?.ministry_name) {
+    newProfile.ministry_name = preConfigured.ministry_name;
+  }
+
+  try {
+    await setDoc(profileRef, cleanForFirestore(newProfile), { merge: true });
+  } catch (err) {
+    console.warn('[FirebaseAuth] Aviso ao gravar novo perfil no Firestore:', err);
+  }
+
   return newProfile;
 }
 

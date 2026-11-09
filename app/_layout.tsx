@@ -1,5 +1,5 @@
 import React, { useEffect, Component, ErrorInfo, ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -64,9 +64,17 @@ class RootErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
 }
 
 function RootNavigator() {
-  const { theme } = useApp();
+  const { theme, isAuthLoading } = useApp();
   const themeColors = getThemeColors(theme);
   const isDark = theme === 'dark';
+
+  if (isAuthLoading) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: isDark ? '#0F172A' : '#FFFFFF' }]}>
+        <ActivityIndicator size="large" color="#DC2626" />
+      </View>
+    );
+  }
 
   return (
     <>
@@ -229,5 +237,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

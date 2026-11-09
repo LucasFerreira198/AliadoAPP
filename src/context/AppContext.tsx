@@ -51,6 +51,7 @@ interface AppContextType {
   // Autenticação & Perfil
   currentUser: Profile | null;
   isAuthenticated: boolean;
+  isAuthLoading: boolean;
   signIn: (email: string, password?: string, role?: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
@@ -222,6 +223,7 @@ const STORAGE_KEYS = {
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [theme, setTheme] = useState<AppTheme>('light');
   const [profiles, setProfiles] = useState<Profile[]>(INITIAL_PROFILES);
   const [ministries, setMinistries] = useState<Ministry[]>(INITIAL_MINISTRIES);
@@ -342,6 +344,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const count = await OfflineSyncService.count();
         setOfflineQueueCount(count);
 
+        // Marca carregamento inicial de sessão como concluído
+        setIsAuthLoading(false);
+
         // Tenta processar fila offline ao inicializar se houver conexão
         if (count > 0 && isSupabaseConfigured()) {
           await syncOfflineQueue();
@@ -370,10 +375,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ]);
 
                 if (fbProfiles.length > 0) {
-                  const map = new Map<string, Profile>();
-                  INITIAL_PROFILES.forEach(p => map.set(p.email.toLowerCase(), p));
-                  fbProfiles.forEach(p => map.set(p.email.toLowerCase(), { ...map.get(p.email.toLowerCase()), ...p }));
-                  setProfiles(Array.from(map.values()));
+                  setProfiles(prevProfiles => {
+                    const map = new Map<string, Profile>();
+                    // 1. Perfis base padrão
+                    INITIAL_PROFILES.forEach(p => map.set(p.email.toLowerCase(), p));
+                    // 2. Perfis locais atuais (preserva contas criadas e editadas pelo admin)
+                    prevProfiles.forEach(p => map.set(p.email.toLowerCase(), p));
+                    // 3. Perfis remotos (mescla sem sobrescrever alterações locais já aplicadas)
+                    fbProfiles.forEach(p => {
+                      const existing = map.get(p.email.toLowerCase());
+                      if (existing) {
+                        map.set(p.email.toLowerCase(), { ...p, ...existing });
+                      } else {
+                        map.set(p.email.toLowerCase(), p);
+                      }
+                    });
+                    const merged = Array.from(map.values());
+                    AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(merged));
+                    return merged;
+                  });
                 }
                 if (fbMinistries) {
                   setMinistries(fbMinistries);
@@ -399,6 +419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }, 300);
       } catch (err) {
         console.error('[AppProvider] Erro ao carregar armazenamento local:', err);
+        setIsAuthLoading(false);
       }
     })();
   }, []);
@@ -520,8 +541,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // 2. Busca o perfil institucional (em memória, INITIAL_PROFILES ou Firestore)
-    let found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
+    // 2. Busca o perfil institucional (no armazenamento local atualizado, em memória, INITIAL_PROFILES ou Firestore)
+    let found: Profile | undefined;
+    try {
+      const savedProfilesRaw = await AsyncStorage.getItem(STORAGE_KEYS.PROFILES);
+      if (savedProfilesRaw) {
+        const list: Profile[] = JSON.parse(savedProfilesRaw);
+        found = list.find(p => p.email.toLowerCase() === cleanEmail);
+      }
+    } catch {}
+
+    if (!found) {
+      found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
+    }
     if (!found) {
       found = INITIAL_PROFILES.find(p => p.email.toLowerCase() === cleanEmail);
     }
@@ -721,11 +753,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('Apenas o Administrador Geral pode editar contas de usuários.');
     }
 
-    const updated = profiles.map(p => p.id === profile.id ? profile : p);
-    setProfiles(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updated));
+    const cleanEmail = profile.email.toLowerCase().trim();
+    let found = false;
+    const updated = profiles.map(p => {
+      if (p.id === profile.id || p.email.toLowerCase().trim() === cleanEmail) {
+        found = true;
+        return profile;
+      }
+      return p;
+    });
 
-    if (currentUser.id === profile.id) {
+    const finalProfiles = found ? updated : [...updated, profile];
+    setProfiles(finalProfiles);
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(finalProfiles));
+
+    if (currentUser.id === profile.id || currentUser.email.toLowerCase().trim() === cleanEmail) {
       setCurrentUser(profile);
       await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(profile));
     }
@@ -1885,6 +1927,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentUser,
         isAuthenticated: !!currentUser,
+        isAuthLoading,
         signIn,
         signInWithGoogle,
         signOut,

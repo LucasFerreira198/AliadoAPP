@@ -23,6 +23,12 @@ export interface Profile {
   is_active?: boolean;
 }
 
+export interface MinistryLeaderItem {
+  id: string;
+  name: string;
+  phone?: string;
+}
+
 export interface Ministry {
   id: string;
   name: string;
@@ -32,6 +38,9 @@ export interface Ministry {
   leader_id?: string;
   leader_name?: string;
   leader_phone?: string;
+  leader_ids?: string[];
+  leader_names?: string[];
+  leaders?: MinistryLeaderItem[];
   member_count?: number;
 }
 

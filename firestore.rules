@@ -37,6 +37,9 @@ service cloud.firestore {
     //   - leader_id: string (optional, <= 128 chars)
     //   - leader_name: string (optional, <= 100 chars)
     //   - leader_phone: string (optional, <= 25 chars)
+    //   - leader_ids: list (optional, <= 20 items)
+    //   - leader_names: list (optional, <= 20 items)
+    //   - leaders: list (optional, <= 20 items)
     //   - member_count: number (optional, >= 0)
     //
     // Collection: schedules
@@ -179,37 +182,69 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/profiles/$(request.auth.uid));
     }
 
-    // Role-based helper functions using custom token claims, bootstrap verified emails, or cached Firestore profile lookup
+    // Role-based helper functions using custom token claims, case-insensitive bootstrap verified emails, or cached Firestore profile lookup
+    function isEmailAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'lokoporgame194@gmail.com' ||
+          request.auth.token.email.lower() == 'admin@metodistaaliado.com.br' ||
+          request.auth.token.email.lower() == 'admin@aliado.com'
+        );
+    }
+
+    function isEmailPastor() {
+      return isAuthenticated() &&
+        request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'pastor@metodistaaliado.com.br' ||
+          request.auth.token.email.lower() == 'pastor@aliado.com'
+        );
+    }
+
+    function isEmailMaad() {
+      return isAuthenticated() &&
+        request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'maad@metodistaaliado.com.br' ||
+          request.auth.token.email.lower() == 'maad@aliado.com'
+        );
+    }
+
+    function isEmailSecretaria() {
+      return isAuthenticated() &&
+        request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'secretaria@metodistaaliado.com.br' ||
+          request.auth.token.email.lower() == 'secretaria@aliado.com'
+        );
+    }
+
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.role == 'admin' ||
-        request.auth.token.email == 'admin@metodistaaliado.com.br' ||
-        request.auth.token.email == 'lokoporgame194@gmail.com' ||
-        (hasUserDoc() && getUserDoc().data.role == 'admin')
+        isEmailAdmin() ||
+        (hasUserDoc() && ('role' in getUserDoc().data) && getUserDoc().data.role == 'admin')
       );
     }
 
     function isPastor() {
       return isAuthenticated() && (
         request.auth.token.role == 'pastor' ||
-        request.auth.token.email == 'pastor@metodistaaliado.com.br' ||
-        (hasUserDoc() && getUserDoc().data.role == 'pastor')
+        isEmailPastor() ||
+        (hasUserDoc() && ('role' in getUserDoc().data) && getUserDoc().data.role == 'pastor')
       );
     }
 
     function isMaad() {
       return isAuthenticated() && (
         request.auth.token.role == 'maad' ||
-        request.auth.token.email == 'maad@metodistaaliado.com.br' ||
-        (hasUserDoc() && getUserDoc().data.role == 'maad')
+        isEmailMaad() ||
+        (hasUserDoc() && ('role' in getUserDoc().data) && getUserDoc().data.role == 'maad')
       );
     }
 
     function isSecretaria() {
       return isAuthenticated() && (
         request.auth.token.role == 'secretaria' ||
-        request.auth.token.email == 'secretaria@metodistaaliado.com.br' ||
-        (hasUserDoc() && getUserDoc().data.role == 'secretaria')
+        isEmailSecretaria() ||
+        (hasUserDoc() && ('role' in getUserDoc().data) && getUserDoc().data.role == 'secretaria')
       );
     }
 
@@ -232,10 +267,10 @@ service cloud.firestore {
     function getUserRole() {
       return !isAuthenticated() ? null :
         request.auth.token.role != null ? request.auth.token.role :
-        (request.auth.token.email == 'admin@metodistaaliado.com.br' || request.auth.token.email == 'lokoporgame194@gmail.com') ? 'admin' :
-        request.auth.token.email == 'pastor@metodistaaliado.com.br' ? 'pastor' :
-        request.auth.token.email == 'maad@metodistaaliado.com.br' ? 'maad' :
-        request.auth.token.email == 'secretaria@metodistaaliado.com.br' ? 'secretaria' :
+        isEmailAdmin() ? 'admin' :
+        isEmailPastor() ? 'pastor' :
+        isEmailMaad() ? 'maad' :
+        isEmailSecretaria() ? 'secretaria' :
         (hasUserDoc() && ('role' in getUserDoc().data) ? getUserDoc().data.role : 'member');
     }
 
@@ -248,8 +283,12 @@ service cloud.firestore {
     function isMinistryLeader(ministryId) {
       return isAuthenticated() && (
         (getUserRole() == 'leader' && getUserMinistryId() == ministryId) ||
-        (exists(/databases/$(database)/documents/ministries/$(ministryId)) &&
-         get(/databases/$(database)/documents/ministries/$(ministryId)).data.leader_id == request.auth.uid)
+        (exists(/databases/$(database)/documents/ministries/$(ministryId)) && (
+          (('leader_id' in get(/databases/$(database)/documents/ministries/$(ministryId)).data) &&
+           get(/databases/$(database)/documents/ministries/$(ministryId)).data.leader_id == request.auth.uid) ||
+          (('leader_ids' in get(/databases/$(database)/documents/ministries/$(ministryId)).data) &&
+           request.auth.uid in get(/databases/$(database)/documents/ministries/$(ministryId)).data.leader_ids)
+        ))
       );
     }
 
@@ -283,7 +322,7 @@ service cloud.firestore {
     }
 
     function isValidMinistry(data) {
-      return data.keys().hasOnly(['id', 'name', 'description', 'color_hex', 'icon_name', 'leader_id', 'leader_name', 'leader_phone', 'member_count']) &&
+      return data.keys().hasOnly(['id', 'name', 'description', 'color_hex', 'icon_name', 'leader_id', 'leader_name', 'leader_phone', 'leader_ids', 'leader_names', 'leaders', 'member_count']) &&
         data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
         data.description is string && data.description.size() <= 1000 &&
         data.color_hex is string && data.color_hex.size() <= 20 &&
@@ -292,6 +331,9 @@ service cloud.firestore {
         (!('leader_id' in data) || (data.leader_id is string && data.leader_id.size() <= 128)) &&
         (!('leader_name' in data) || (data.leader_name is string && data.leader_name.size() <= 100)) &&
         (!('leader_phone' in data) || (data.leader_phone is string && data.leader_phone.size() <= 25)) &&
+        (!('leader_ids' in data) || (data.leader_ids is list && data.leader_ids.size() <= 20)) &&
+        (!('leader_names' in data) || (data.leader_names is list && data.leader_names.size() <= 20)) &&
+        (!('leaders' in data) || (data.leaders is list && data.leaders.size() <= 20)) &&
         (!('member_count' in data) || (data.member_count is number && data.member_count >= 0));
     }
 
@@ -418,19 +460,20 @@ service cloud.firestore {
     // ===============================================================
 
     // 1. PROFILES
-    // Read: authenticated user reading their own profile, or pastor/admin reading any profile
-    // Create: admin or user creating their own initial volunteer/member profile
-    // Update: admin (can update any field except id) or user updating own profile info (cannot change id, role, email)
+    // Read: any authenticated church user (allows team schedules, rosters, and birthday queries)
+    // Create: admin or authenticated user initializing their own profile (e.g. initial Google login)
+    // Update: admin (can update any field except immutable id), owner with verified admin email, or regular user updating self fields
     // Delete: strictly admin
     match /profiles/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isPastorOrAdmin());
+      allow read: if isAuthenticated();
 
-      allow create: if (isAdmin() && isValidProfile(request.resource.data)) ||
-        (isOwner(userId) && isValidProfile(request.resource.data) && (isAdmin() || request.resource.data.role in ['volunteer', 'member']));
+      allow create: if isAuthenticated() &&
+        isValidProfile(request.resource.data) &&
+        (isAdmin() || isOwner(userId));
 
-      allow update: if isValidProfile(request.resource.data) && (
-        // Admin can update profile fields (id remains unchanged)
-        (isAdmin() && areImmutableFieldsUnchanged(['id'])) ||
+      allow update: if isAuthenticated() && isValidProfile(request.resource.data) && (
+        // Admin or owner with verified admin email can update profile fields (id remains unchanged)
+        ((isAdmin() || (isOwner(userId) && isEmailAdmin())) && areImmutableFieldsUnchanged(['id'])) ||
         // Regular user can update their own profile info (cannot change id, role, email)
         (
           isOwner(userId) &&

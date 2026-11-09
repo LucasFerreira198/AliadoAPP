@@ -168,8 +168,8 @@ export default function HomeScreen() {
                 <ShieldCheck size={24} color="#FFFFFF" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.adminCardTitle, { color: themeColors.textPrimary }]}>Painel do Administrador</Text>
-                <Text style={[styles.adminCardSub, { color: themeColors.textSecondary }]}>
+                <Text style={[styles.adminCardTitle, { color: isDark ? '#F8FAFC' : '#78350F' }]}>Painel do Administrador</Text>
+                <Text style={[styles.adminCardSub, { color: isDark ? '#CBD5E1' : '#92400E' }]}>
                   Cadastrar e gerenciar contas do Pastor, Líderes, Secretaria e MAAD.
                 </Text>
               </View>
