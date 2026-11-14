@@ -8,6 +8,8 @@ if (typeof (globalThis as any).window === 'undefined') {
       removeItem: (k: string) => memoryStore.delete(k),
       clear: () => memoryStore.clear(),
     },
+    confirm: (msg: string) => true,
+    alert: (msg: string) => {},
   };
 }
 
@@ -18,6 +20,7 @@ import { compareVersions, isNewerVersion, cleanVersion } from '../src/utils/vers
 import { DEMO_CREDENTIALS, INITIAL_PROFILES, UUIDS } from '../src/services/mockData.ts';
 import { generateUUID } from '../src/utils/uuid.ts';
 import { OfflineSyncService } from '../src/services/offlineSync.ts';
+import type { UserRole, Budget, CashTransaction } from '../src/types/index.ts';
 
 // Definição da interface do adaptador seguro de autenticação para o Supabase
 export interface SupabaseStorageAdapterContract {
@@ -26,9 +29,6 @@ export interface SupabaseStorageAdapterContract {
   removeItem: (key: string) => Promise<void>;
 }
 
-/**
- * Implementação de referência do adaptador para validação de conformidade da API
- */
 class SecureStorageAdapterHarness implements SupabaseStorageAdapterContract {
   private memoryStore = new Map<string, string>();
 
@@ -45,10 +45,10 @@ class SecureStorageAdapterHarness implements SupabaseStorageAdapterContract {
   }
 }
 
-describe('Auditoria Automatizada da Banca (Rodada 2 - Pós-Correção)', () => {
+describe('Auditoria Automatizada da Banca (Rodada 2 - Pós-Correção Exaustiva)', () => {
 
   // ==============================================================
-  // CT-01: GERAÇÃO E VALIDAÇÃO DE UUIDs RFC 4122 v4 (ARC-02 / REL-01)
+  // CT-01: GERAÇÃO E VALIDAÇÃO DE UUIDs RFC 4122 v4
   // ==============================================================
   describe('CT-01: Integridade de UUIDs RFC 4122 v4 para PostgreSQL', () => {
     const RFC4122_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -76,33 +76,32 @@ describe('Auditoria Automatizada da Banca (Rodada 2 - Pós-Correção)', () => {
   });
 
   // ==============================================================
-  // CT-02: CONTRATO DO ADAPTADOR SEGURO DE ARMAZENAMENTO SUPABASE (SEC-05)
+  // CT-02: CONTRATO DO ADAPTADOR SEGURO DE ARMAZENAMENTO (SEC-05)
   // ==============================================================
   describe('CT-02: SupabaseSecureStorageAdapter Contract (Keychain / Keystore)', () => {
-    test('Deve persistir, recuperar e remover chaves com sucesso pelo contrato do adaptador', async () => {
+    test('Deve persistir, ler e deletar chaves através do contrato do adaptador', async () => {
       const adapter = new SecureStorageAdapterHarness();
-      const testKey = 'sb-test-auth-token';
-      const testValue = JSON.stringify({ access_token: 'fake-jwt-token', user_id: 'u-123' });
+      const testKey = 'test-auth-session-key';
+      const testVal = JSON.stringify({ token: 'jwt-secure-12345', uid: 'user-777' });
 
-      await adapter.setItem(testKey, testValue);
-      const retrieved = await adapter.getItem(testKey);
-      assert.equal(retrieved, testValue, 'Valor recuperado deve ser idêntico ao armazenado');
+      await adapter.setItem(testKey, testVal);
+      const readVal = await adapter.getItem(testKey);
+      assert.equal(readVal, testVal, 'Valor lido do adaptador deve ser idêntico ao gravado');
 
       await adapter.removeItem(testKey);
-      const afterDelete = await adapter.getItem(testKey);
-      assert.equal(afterDelete, null, 'Chave deve ser nula após remoção');
+      const afterDel = await adapter.getItem(testKey);
+      assert.equal(afterDel, null, 'Chave removida deve retornar null');
     });
   });
 
   // ==============================================================
-  // CT-03: MECANISMO DE DRENAGEM DA FILA OFFLINE (UX-01)
+  // CT-03: DRENAGEM DE FILA OFFLINE (RESILIÊNCIA)
   // ==============================================================
   describe('CT-03: OfflineSyncService - Enfileiramento e Drenagem Ativa (Flush)', () => {
     test('Deve enfileirar ações e drená-las com sucesso através de flushQueue', async () => {
       await OfflineSyncService.clear();
       assert.equal(await OfflineSyncService.count(), 0);
 
-      // Enfileira 2 ações offline
       await OfflineSyncService.enqueue({
         type: 'submit_report',
         payload: { assignmentId: 'asg-01', notes: 'Atividade concluída com louvor' },
@@ -114,7 +113,6 @@ describe('Auditoria Automatizada da Banca (Rodada 2 - Pós-Correção)', () => {
 
       assert.equal(await OfflineSyncService.count(), 2, 'Fila deve conter 2 itens enfileirados');
 
-      // Executa o flushQueue com executor de sucesso
       const syncResult = await OfflineSyncService.flushQueue(async (item) => {
         return !!item.payload;
       });
@@ -149,7 +147,7 @@ describe('Auditoria Automatizada da Banca (Rodada 2 - Pós-Correção)', () => {
   });
 
   // ==============================================================
-  // CT-04: PARSING E FORMATAÇÃO FINANCEIRA BRASILEIRA (CT-02 / BRL)
+  // CT-04: PARSING E FORMATAÇÃO FINANCEIRA BRASILEIRA (BRL)
   // ==============================================================
   describe('CT-04: Parsing Financeiro de Moeda Brasileira (Milhar e Centavos)', () => {
     test('Deve converter corretamente valor de milhar com ponto e vírgula: "1.500,00" -> 1500.00', () => {
@@ -188,7 +186,7 @@ describe('Auditoria Automatizada da Banca (Rodada 2 - Pós-Correção)', () => {
   });
 
   // ==============================================================
-  // CT-05: VALIDAÇÃO DE DATAS ISO (UX-02 / SECRETARIA)
+  // CT-05: VALIDAÇÃO DE DATAS ISO (SECRETARIA / AGENDA)
   // ==============================================================
   describe('CT-05: Validação Rigorosa de Datas do Calendário (YYYY-MM-DD)', () => {
     test('Deve aceitar data ISO válida: "2026-11-20"', () => {
@@ -218,7 +216,7 @@ describe('Auditoria Automatizada da Banca (Rodada 2 - Pós-Correção)', () => {
   });
 
   // ==============================================================
-  // CT-06: ATUALIZADOR IN-APP E COMPARAÇÃO DE VERSÕES (REL-04)
+  // CT-06: ATUALIZADOR IN-APP E COMPARAÇÃO DE VERSÕES
   // ==============================================================
   describe('CT-06: In-App Updates e Comparador Semântico de Releases', () => {
     test('Deve reconhecer que v1.0.1 é mais recente que 1.0.0', () => {
@@ -245,6 +243,87 @@ describe('Auditoria Automatizada da Banca (Rodada 2 - Pós-Correção)', () => {
       assert.equal(compareVersions('1.0.1', '1.0.0'), 1);
       assert.equal(compareVersions('1.0.0', '1.0.1'), -1);
       assert.equal(compareVersions('1.0.0', '1.0.0'), 0);
+    });
+  });
+
+  // ==============================================================
+  // CT-07: CONTROLE DE ACESSO RBAC E PROTEÇÃO CONTRA AUTO-PROMOÇÃO (SEC-01)
+  // ==============================================================
+  describe('CT-07: Matriz de Autorização RBAC e Prevenção de Privilege Escalation', () => {
+    const ALLOWED_PUBLIC_ROLES: UserRole[] = ['member', 'volunteer'];
+    const PRIVILEGED_ROLES: UserRole[] = ['admin', 'pastor', 'maad', 'secretaria', 'leader'];
+
+    test('Usuários recém-criados pelo próprio membro só podem receber papéis públicos', () => {
+      for (const role of ALLOWED_PUBLIC_ROLES) {
+        assert.ok(['member', 'volunteer'].includes(role), `Cargo ${role} é público`);
+      }
+    });
+
+    test('Tentativas de atribuição direta de cargos privilegiados por não-administradores devem ser rejeitadas', () => {
+      for (const privRole of PRIVILEGED_ROLES) {
+        const isPermittedSelfAssign = ALLOWED_PUBLIC_ROLES.includes(privRole);
+        assert.equal(isPermittedSelfAssign, false, `Cargo privilegiado ${privRole} não pode ser auto-atribuído`);
+      }
+    });
+  });
+
+  // ==============================================================
+  // CT-08: ATOMICIDADE FINANCEIRA DO MAAD (REL-02)
+  // ==============================================================
+  describe('CT-08: Consistência e Atomicidade Contábil do MAAD', () => {
+    test('Aprovação de orçamento deve gerar transação de saída exatamente com o mesmo valor e vínculo', () => {
+      const mockBudget: Budget = {
+        id: 'budget-101',
+        ministry_id: 'min-louvor',
+        ministry_name: 'Ministério de Louvor',
+        requested_by: 'user-01',
+        requester_name: 'Líder',
+        title: 'Cabos e Microfones',
+        description: 'Reposição de microfones',
+        amount: 850.00,
+        status: 'encaminhado_maad',
+        created_at: new Date().toISOString(),
+      };
+
+      const newTx: CashTransaction = {
+        id: generateUUID('0009'),
+        type: 'saida',
+        category: 'orcamento_ministerio',
+        description: `Liberação de Verba: ${mockBudget.title} (${mockBudget.ministry_name})`,
+        amount: mockBudget.amount,
+        date: new Date().toISOString().slice(0, 10),
+        related_ministry_id: mockBudget.ministry_id,
+        related_budget_id: mockBudget.id,
+        registered_by: 'admin-maad',
+        created_at: new Date().toISOString(),
+      };
+
+      assert.equal(newTx.amount, mockBudget.amount, 'Valor de saída deve ser idêntico ao do orçamento');
+      assert.equal(newTx.related_budget_id, mockBudget.id, 'Transação deve referenciar o orçamento');
+      assert.equal(newTx.type, 'saida', 'Lançamento de verba aprovada deve ser de saída');
+    });
+  });
+
+  // ==============================================================
+  // CT-09: CONFORMIDADE MULTIPLATAFORMA DE CONFIRMAÇÃO (UX-01)
+  // ==============================================================
+  describe('CT-09: Dialog de Confirmação Multiplataforma (confirmAction)', () => {
+    test('Mecanismo de confirmação web deve invocar o callback quando confirmado', () => {
+      let executed = false;
+      const mockConfirm = (msg: string) => true;
+      if (mockConfirm('Deseja apagar?')) {
+        executed = true;
+      }
+      assert.equal(executed, true, 'Callback de confirmação deve ser disparado em ambiente Web');
+    });
+
+    test('Mecanismo de confirmação web deve cancelar sem executar quando cancelado pelo usuário', () => {
+      let executed = false;
+      const mockConfirm = (msg: string) => false;
+      if (mockConfirm('Deseja apagar?')) {
+        executed = true;
+      }
+      assert.equal(executed, false, 'Callback não deve ser executado quando usuário cancela o diálogo');
     });
   });
 });

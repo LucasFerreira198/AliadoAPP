@@ -198,8 +198,8 @@ service cloud.firestore {
     // Role-based helper functions using custom token claims, case-insensitive bootstrap verified emails, or cached Firestore profile lookup
     function isEmailAdmin() {
       return isAuthenticated() &&
+        request.auth.token.email_verified == true &&
         request.auth.token.email != null && (
-          request.auth.token.email.lower() == 'lokoporgame194@gmail.com' ||
           request.auth.token.email.lower() == 'admin@metodistaaliado.com.br' ||
           request.auth.token.email.lower() == 'admin@aliado.com'
         );
@@ -207,6 +207,7 @@ service cloud.firestore {
 
     function isEmailPastor() {
       return isAuthenticated() &&
+        request.auth.token.email_verified == true &&
         request.auth.token.email != null && (
           request.auth.token.email.lower() == 'pastor@metodistaaliado.com.br' ||
           request.auth.token.email.lower() == 'pastor@aliado.com'
@@ -215,6 +216,7 @@ service cloud.firestore {
 
     function isEmailMaad() {
       return isAuthenticated() &&
+        request.auth.token.email_verified == true &&
         request.auth.token.email != null && (
           request.auth.token.email.lower() == 'maad@metodistaaliado.com.br' ||
           request.auth.token.email.lower() == 'maad@aliado.com'
@@ -223,6 +225,7 @@ service cloud.firestore {
 
     function isEmailSecretaria() {
       return isAuthenticated() &&
+        request.auth.token.email_verified == true &&
         request.auth.token.email != null && (
           request.auth.token.email.lower() == 'secretaria@metodistaaliado.com.br' ||
           request.auth.token.email.lower() == 'secretaria@aliado.com'
@@ -487,35 +490,47 @@ service cloud.firestore {
 
     // 1. PROFILES
     // Read: any authenticated church user (allows team schedules, rosters, and birthday queries)
-    // Create: admin or authenticated user initializing their own profile (cannot self-assign admin unless verified email admin)
-    // Update: admin (can update any field except immutable id), or owner updating profile fields (cannot elevate to admin unless verified admin email)
-    // Delete: admin or authenticated user deleting duplicate/secondary doc associated with their own email
+    // Create: admin or authenticated user initializing their own profile (cannot self-assign admin, pastor, maad, secretaria, or leader unless verified bootstrap email)
+    // Update: admin (can update any field except immutable id), or owner updating profile fields (id and role are immutable; only admins can change role)
+    // Delete: admin or verified authenticated user deleting duplicate/secondary doc associated with their own verified email
     match /profiles/{userId} {
       allow read: if isAuthenticated();
 
       allow create: if isAuthenticated() &&
         isValidProfile(request.resource.data) && (
           isAdmin() ||
-          (isOwner(userId) && (request.resource.data.role != 'admin' || isEmailAdmin()))
+          (
+            isOwner(userId) && (
+              request.resource.data.role in ['member', 'volunteer'] ||
+              (request.resource.data.role == 'admin' && isEmailAdmin()) ||
+              (request.resource.data.role == 'pastor' && isEmailPastor()) ||
+              (request.resource.data.role == 'maad' && isEmailMaad()) ||
+              (request.resource.data.role == 'secretaria' && isEmailSecretaria())
+            )
+          )
         );
 
       allow update: if isAuthenticated() && isValidProfile(request.resource.data) && (
         // Admin can update any profile (id remains immutable)
         (isAdmin() && areImmutableFieldsUnchanged(['id'])) ||
-        // Profile owner can update their own profile fields (id immutable; cannot elevate to admin unless verified admin email)
+        // Profile owner can update their own profile fields (id and role immutable; only admins can change role)
         (
           (
             isOwner(userId) ||
-            (request.auth.token.email != null && ('email' in resource.data) &&
-             (resource.data.email == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower()))
+            (
+              request.auth.token.email_verified == true &&
+              request.auth.token.email != null &&
+              ('email' in resource.data) &&
+              (resource.data.email == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower())
+            )
           ) &&
-          areImmutableFieldsUnchanged(['id']) &&
-          (request.resource.data.role != 'admin' || isEmailAdmin())
+          areImmutableFieldsUnchanged(['id', 'role'])
         )
       );
 
       allow delete: if isAdmin() || (
         isAuthenticated() &&
+        request.auth.token.email_verified == true &&
         request.auth.token.email != null &&
         ('email' in resource.data) &&
         (resource.data.email == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower())

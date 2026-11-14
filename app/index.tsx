@@ -49,6 +49,7 @@ import LoginScreen from './login';
 export default function HomeScreen() {
   const { 
     currentUser, 
+    isAuthLoading,
     goals, 
     ministries, 
     schedules, 
@@ -70,6 +71,10 @@ export default function HomeScreen() {
   const [selectedFilter, setSelectedFilter] = useState<'todas' | 'abertas' | 'duvidas' | 'atrasadas' | 'concluidas'>('todas');
   const [selectedMinistryFilter, setSelectedMinistryFilter] = useState<string | null>(null);
   const [leaderTab, setLeaderTab] = useState<'metas' | 'escalas' | 'orcamentos' | 'gastos'>('metas');
+
+  if (isAuthLoading) {
+    return <View style={[styles.container, { backgroundColor: themeColors.background }]} />;
+  }
 
   // Se o usuário não estiver autenticado, exibe a tela de login
   if (!currentUser) {

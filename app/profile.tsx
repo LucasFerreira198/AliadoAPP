@@ -35,6 +35,7 @@ import { Input } from '../src/components/ui/Input';
 import { Button } from '../src/components/ui/Button';
 import { Card } from '../src/components/ui/Card';
 import { Colors, getThemeColors } from '../src/theme/colors';
+import { uploadMedia } from '../src/services/mediaUpload';
 
 export default function ProfileScreen() {
   const {
@@ -86,13 +87,10 @@ export default function ProfileScreen() {
     setBirthDate(formatted);
   };
 
-  // Estados de Troca de E-mail com Código de Confirmação
+  // Estados de Troca de E-mail com Autenticação de Senha (SEC-05)
   const [newEmail, setNewEmail] = useState('');
-  const [emailStep, setEmailStep] = useState<'input' | 'verify'>('input');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [generatedCode, setGeneratedCode] = useState<string | null>(null);
-  const [sendingCode, setSendingCode] = useState(false);
-  const [verifyingCode, setVerifyingCode] = useState(false);
+  const [emailPassword, setEmailPassword] = useState('');
+  const [updatingEmail, setUpdatingEmail] = useState(false);
   const [emailFeedback, setEmailFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Estados de Alteração de Senha
@@ -159,10 +157,15 @@ export default function ProfileScreen() {
 
       if (!result.canceled && result.assets && result.assets[0]?.uri) {
         setUploadingAvatar(true);
-        const newAvatarUri = result.assets[0].uri;
-        await updateUserProfile({ avatar_url: newAvatarUri });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        showPrompt('Foto Atualizada!', 'Sua nova foto de perfil foi salva com sucesso.');
+        const localUri = result.assets[0].uri;
+        const uploadRes = await uploadMedia(localUri, 'avatars');
+        if (uploadRes.isRemote && uploadRes.url) {
+          await updateUserProfile({ avatar_url: uploadRes.url });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          showPrompt('Foto Atualizada!', 'Sua nova foto de perfil foi salva na nuvem com sucesso.');
+        } else {
+          showPrompt('Aviso de Upload', 'Não foi possível enviar a imagem para o servidor de nuvem. Verifique sua conexão à internet.');
+        }
       }
     } catch (err: any) {
       showPrompt('Erro', err.message || 'Não foi possível alterar a foto.');
@@ -197,8 +200,8 @@ export default function ProfileScreen() {
     }
   };
 
-  // 3. Enviar Código de Confirmação para Novo E-mail
-  const handleSendVerificationCode = async () => {
+  // 3. Atualizar E-mail com Validação Segura de Senha (SEC-05)
+  const handleUpdateEmail = async () => {
     const cleanNewEmail = newEmail.trim().toLowerCase();
     if (!cleanNewEmail || !cleanNewEmail.includes('@') || !cleanNewEmail.includes('.')) {
       setEmailFeedback({ type: 'error', text: 'Por favor, informe um endereço de e-mail válido.' });
@@ -210,58 +213,31 @@ export default function ProfileScreen() {
       return;
     }
 
-    setSendingCode(true);
+    if (!emailPassword.trim()) {
+      setEmailFeedback({ type: 'error', text: 'Digite sua senha atual para autorizar a alteração do e-mail institucional.' });
+      return;
+    }
+
+    setUpdatingEmail(true);
     setEmailFeedback(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      // Gera código de 6 dígitos
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedCode(code);
-      setEmailStep('verify');
+      const verifyRes = await changeUserPassword(emailPassword.trim(), emailPassword.trim());
+      if (!verifyRes.success) {
+        setEmailFeedback({ type: 'error', text: 'Senha atual incorreta. A alteração de e-mail foi rejeitada.' });
+        return;
+      }
 
-      // Exibe código de confirmação ao usuário
-      setEmailFeedback({
-        type: 'success',
-        text: `Código enviado para ${cleanNewEmail}! Insira o código ${code} abaixo para confirmar a troca.`,
-      });
-      showPrompt(
-        'Código de Confirmação Gerado',
-        `Um código de segurança foi emitido para ${cleanNewEmail}:\n\nCÓDIGO: ${code}\n\nDigite-o no formulário para concluir a alteração.`
-      );
-    } catch (err: any) {
-      setEmailFeedback({ type: 'error', text: err.message || 'Falha ao enviar código.' });
-    } finally {
-      setSendingCode(false);
-    }
-  };
-
-  // 4. Confirmar e Atualizar E-mail com Código
-  const handleConfirmEmailChange = async () => {
-    if (!verificationCode.trim()) {
-      setEmailFeedback({ type: 'error', text: 'Digite o código de 6 dígitos recebido.' });
-      return;
-    }
-
-    if (verificationCode.trim() !== generatedCode) {
-      setEmailFeedback({ type: 'error', text: 'Código de verificação incorreto. Tente novamente.' });
-      return;
-    }
-
-    setVerifyingCode(true);
-    setEmailFeedback(null);
-    try {
+      await updateUserProfile({ email: cleanNewEmail });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await updateUserProfile({ email: newEmail.trim().toLowerCase() });
-      setEmailFeedback({ type: 'success', text: `Seu e-mail foi alterado com sucesso para ${newEmail.trim().toLowerCase()}!` });
-      setEmailStep('input');
+      setEmailFeedback({ type: 'success', text: `Seu e-mail foi alterado com sucesso para ${cleanNewEmail}!` });
       setNewEmail('');
-      setVerificationCode('');
-      setGeneratedCode(null);
-      showPrompt('E-mail Alterado', 'Seu novo e-mail foi salvo e já está ativo para seus próximos logins!');
+      setEmailPassword('');
+      showPrompt('E-mail Alterado', 'Seu novo e-mail foi autenticado e atualizado com sucesso para seus próximos acessos.');
     } catch (err: any) {
       setEmailFeedback({ type: 'error', text: err.message || 'Falha ao atualizar e-mail.' });
     } finally {
-      setVerifyingCode(false);
+      setUpdatingEmail(false);
     }
   };
 
@@ -506,69 +482,31 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {emailStep === 'input' ? (
-            <>
-              <Input
-                label="Novo E-mail *"
-                placeholder="novo.email@exemplo.com"
-                value={newEmail}
-                onChangeText={setNewEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+          <Input
+            label="Novo E-mail Institucional *"
+            placeholder="novo.email@metodistaaliado.com.br"
+            value={newEmail}
+            onChangeText={setNewEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
 
-              <Button
-                title="Enviar Código de Confirmação"
-                onPress={handleSendVerificationCode}
-                loading={sendingCode}
-                variant="secondary"
-                icon={<Send size={16} color={themeColors.textPrimary} />}
-                style={{ marginTop: 6 }}
-              />
-            </>
-          ) : (
-            <View style={[styles.verificationContainer, { backgroundColor: isDark ? '#0F172A' : '#EFF6FF', borderColor: '#93C5FD' }]}>
-              <Text style={[styles.verifyPrompt, { color: isDark ? '#93C5FD' : '#1D4ED8' }]}>
-                Digite o código de 6 dígitos enviado para confirmar a troca de e-mail:
-              </Text>
+          <Input
+            label="Sua Senha Atual para Confirmação *"
+            placeholder="Digite sua senha de acesso"
+            value={emailPassword}
+            onChangeText={setEmailPassword}
+            secureTextEntry
+          />
 
-              {generatedCode && (
-                <View style={styles.codePill}>
-                  <Text style={styles.codePillLabel}>Código emitido:</Text>
-                  <Text style={styles.codePillValue}>{generatedCode}</Text>
-                </View>
-              )}
-
-              <Input
-                label="Código de Confirmação (6 dígitos) *"
-                placeholder="Ex: 123456"
-                value={verificationCode}
-                onChangeText={setVerificationCode}
-                keyboardType="number-pad"
-                maxLength={6}
-              />
-
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-                <Button
-                  title="Confirmar Troca"
-                  onPress={handleConfirmEmailChange}
-                  loading={verifyingCode}
-                  variant="primary"
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  title="Cancelar"
-                  onPress={() => {
-                    setEmailStep('input');
-                    setVerificationCode('');
-                    setEmailFeedback(null);
-                  }}
-                  variant="outline"
-                  style={{ flex: 0.6 }}
-                />
-              </View>
-            </View>
-          )}
+          <Button
+            title="Atualizar Meu E-mail"
+            onPress={handleUpdateEmail}
+            loading={updatingEmail}
+            variant="secondary"
+            icon={<Send size={16} color={themeColors.textPrimary} />}
+            style={{ marginTop: 6 }}
+          />
         </Card>
 
         {/* 3. SEÇÃO: ALTERAR SENHA */}

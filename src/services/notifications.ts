@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 // Configura o comportamento padrão quando uma notificação chega com o app aberto
 Notifications.setNotificationHandler({
@@ -33,7 +34,10 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       return null;
     }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    const tokenData = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
     token = tokenData.data;
 
     if (Platform.OS === 'android') {

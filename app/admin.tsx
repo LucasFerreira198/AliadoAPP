@@ -45,6 +45,7 @@ import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
 import { UserRole, Ministry, Profile, AppFeatureKey } from '../src/types';
 import { Colors, getThemeColors } from '../src/theme/colors';
+import { confirmAction, showAlert } from '../src/utils/confirm';
 
 type AdminTab = 'accounts' | 'ministries' | 'features';
 
@@ -339,29 +340,23 @@ export default function AdminScreen() {
 
   const handleDeleteAccount = (userId: string, name: string) => {
     if (userId === currentUser?.id) {
-      Alert.alert('Ação Não Permitida', 'Você não pode excluir sua própria conta logada.');
+      showAlert('Ação Não Permitida', 'Você não pode excluir sua própria conta logada.');
       return;
     }
 
-    Alert.alert(
+    confirmAction(
       'Confirmar Exclusão de Conta',
       `Tem certeza que deseja apagar permanentemente a conta de "${name}"? Esta ação removerá o acesso do usuário.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Sim, Excluir', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              await deleteAccount(userId);
-              Alert.alert('Conta Excluída', `O usuário ${name} foi removido do sistema.`);
-            } catch (err: any) {
-              Alert.alert('Erro', err.message || 'Não foi possível excluir a conta.');
-            }
-          }
+      async () => {
+        try {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          await deleteAccount(userId);
+          showAlert('Conta Excluída', `O usuário ${name} foi removido do sistema.`);
+        } catch (err: any) {
+          showAlert('Erro', err.message || 'Não foi possível excluir a conta.');
         }
-      ]
+      },
+      'Sim, Excluir'
     );
   };
 
@@ -476,54 +471,42 @@ export default function AdminScreen() {
   };
 
   const handleDeleteMinistry = (id: string, name: string) => {
-    Alert.alert(
+    confirmAction(
       'Excluir Ministério',
       `Tem certeza que deseja apagar o ministério "${name}"?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sim, Excluir',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              await deleteMinistry(id);
-              Alert.alert('Excluído', `O ministério "${name}" foi removido.`);
-            } catch (err: any) {
-              Alert.alert('Erro', err.message || 'Falha ao excluir ministério.');
-            }
-          }
+      async () => {
+        try {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          await deleteMinistry(id);
+          showAlert('Excluído', `O ministério "${name}" foi removido.`);
+        } catch (err: any) {
+          showAlert('Erro', err.message || 'Falha ao excluir ministério.');
         }
-      ]
+      },
+      'Sim, Excluir'
     );
   };
 
   const handlePurgeAllMinistries = () => {
-    Alert.alert(
+    confirmAction(
       '⚠️ APAGAR TODOS OS MINISTÉRIOS',
       'Tem certeza absoluta que deseja excluir TODOS os ministérios existentes da igreja? Esta ação limpará todo o banco de ministérios.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sim, Apagar Tudo',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              await deleteAllMinistries();
-              Alert.alert('Ministérios Apagados', 'Todos os ministérios foram removidos do aplicativo e da nuvem.');
-            } catch (err: any) {
-              Alert.alert('Erro', err.message || 'Falha ao apagar todos os ministérios.');
-            }
-          }
+      async () => {
+        try {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          await deleteAllMinistries();
+          showAlert('Ministérios Apagados', 'Todos os ministérios foram removidos do aplicativo e da nuvem.');
+        } catch (err: any) {
+          showAlert('Erro', err.message || 'Falha ao apagar todos os ministérios.');
         }
-      ]
+      },
+      'Sim, Apagar Tudo'
     );
   };
 
   // Separa contas admin e outras contas
-  const adminProfiles = profiles.filter(p => p.role === 'admin' || p.email.toLowerCase() === 'lokoporgame194@gmail.com');
-  const otherProfiles = profiles.filter(p => p.role !== 'admin' && p.email.toLowerCase() !== 'lokoporgame194@gmail.com');
+  const adminProfiles = profiles.filter(p => p.role === 'admin' || p.email.toLowerCase() === 'admin@metodistaaliado.com.br');
+  const otherProfiles = profiles.filter(p => p.role !== 'admin' && p.email.toLowerCase() !== 'admin@metodistaaliado.com.br');
 
   return (
     <ScrollView 

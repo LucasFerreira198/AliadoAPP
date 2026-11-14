@@ -136,27 +136,16 @@ export default function LoginScreen() {
       setResetStatus(res);
       if (res.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setEmail(resetEmail.trim());
-        setPassword('123456');
         setLoginError(null);
         setTimeout(() => {
           setHelpModalVisible(false);
-        }, 1800);
+        }, 3000);
       }
     } catch {
-      setResetStatus({ success: false, message: 'Não foi possível redefinir. Tente novamente.' });
+      setResetStatus({ success: false, message: 'Não foi possível solicitar redefinição. Verifique sua conexão e tente novamente.' });
     } finally {
       setResetLoading(false);
     }
-  };
-
-  const handleQuickLogin = (demoEmail: string, demoPass: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setLoginError(null);
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setHelpModalVisible(false);
-    handleLogin(demoEmail, demoPass);
   };
 
   return (
@@ -355,16 +344,16 @@ export default function LoginScreen() {
                   </Text>
                 </View>
                 <Text style={{ fontSize: 12, color: isDark ? '#93C5FD' : '#1E40AF', lineHeight: 18 }}>
-                  Todas as contas criadas pela Secretaria e Administração possuem a senha padrão inicial <Text style={{ fontWeight: '800' }}>123456</Text>. Digite seu e-mail e use essa senha para entrar!
+                  Sua conta deve ser cadastrada previamente pela Administração ou Secretaria da Igreja. Caso necessite de acesso, procure a liderança institucional.
                 </Text>
               </View>
 
-              {/* Seção 2: Redefinição Rápida de Senha */}
+              {/* Seção 2: Redefinição Segura de Senha via Firebase Auth */}
               <Text style={[styles.sectionSubtitle, { color: themeColors.textPrimary, marginTop: 14 }]}>
-                Redefinir Senha
+                Recuperação de Senha
               </Text>
               <Text style={[styles.sectionDesc, { color: themeColors.textSecondary }]}>
-                Informe seu e-mail para restaurar sua senha para o padrão institucional (123456):
+                Informe seu e-mail institucional para receber um link seguro de redefinição de senha:
               </Text>
 
               <Input
@@ -390,55 +379,13 @@ export default function LoginScreen() {
               )}
 
               <Button
-                title="Restaurar Minha Senha"
+                title="Enviar Link de Redefinição"
                 onPress={handleResetPassword}
                 loading={resetLoading}
                 variant="secondary"
                 icon={<KeyRound size={16} color={themeColors.textPrimary} />}
                 style={{ marginTop: 8 }}
               />
-
-              {/* Seção 3: Acesso Rápido com Contas Oficiais */}
-              <View style={{ marginTop: 20 }}>
-                <Text style={[styles.sectionSubtitle, { color: themeColors.textPrimary }]}>
-                  Acesso Direto com Contas Oficiais
-                </Text>
-                <Text style={[styles.sectionDesc, { color: themeColors.textSecondary }]}>
-                  Toque para entrar instantaneamente com o perfil correspondente:
-                </Text>
-
-                <View style={styles.quickAccessList}>
-                  {/* Admin Geral Oficial */}
-                  <TouchableOpacity
-                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#FEF2F2', borderColor: '#FECACA' }]}
-                    onPress={() => handleQuickLogin('admin@metodistaaliado.com.br', '123456')}
-                    activeOpacity={0.7}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <ShieldCheck size={18} color="#DC2626" />
-                      <View>
-                        <Text style={[styles.quickTitle, { color: '#DC2626' }]}>🛡️ Administrador Geral</Text>
-                        <Text style={styles.quickSub}>admin@metodistaaliado.com.br (cria e gerencia todas as contas)</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* Lucas Admin */}
-                  <TouchableOpacity
-                    style={[styles.quickCard, { backgroundColor: isDark ? '#1E293B' : '#FFFBEB', borderColor: '#FDE68A' }]}
-                    onPress={() => handleQuickLogin('lokoporgame194@gmail.com', '123456')}
-                    activeOpacity={0.7}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <UserCheck size={18} color="#D97706" />
-                      <View>
-                        <Text style={[styles.quickTitle, { color: '#D97706' }]}>👑 Lucas Ferreira (Admin)</Text>
-                        <Text style={styles.quickSub}>lokoporgame194@gmail.com (Conta Admin)</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </View>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>

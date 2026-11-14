@@ -45,7 +45,12 @@ import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 import { generateUUID } from '../utils/uuid';
 import { FirestoreService } from '../services/firestoreService';
-import { signInWithGoogleService, signOutFromFirebase } from '../services/firebaseAuth';
+import { 
+  signInWithGoogleService, 
+  signOutFromFirebase, 
+  signInWithEmailService, 
+  sendPasswordResetService 
+} from '../services/firebaseAuth';
 
 interface AppContextType {
   // Autenticação & Perfil
@@ -244,42 +249,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Carregar dados salvos no AsyncStorage / Keystore
   useEffect(() => {
-    (async () => {
+    const safeJsonParse = <T,>(raw: string | null): T | null => {
+      if (!raw) return null;
       try {
-        // Limpeza de ministérios anteriores a pedido do administrador (v1.1.4)
+        return JSON.parse(raw) as T;
+      } catch {
+        return null;
+      }
+    };
+
+    (async () => {
+      let offlineCount = 0;
+      try {
+        // Limpeza de ministérios locais legados sem bloquear inicialização com rede
         const ministriesPurged = await AsyncStorage.getItem(STORAGE_KEYS.MINISTRIES_PURGE_FLAG);
         if (!ministriesPurged) {
           setMinistries([]);
           await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES, JSON.stringify([]));
           await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES_PURGE_FLAG, 'true');
-          try {
-            await FirestoreService.deleteAllMinistries();
-          } catch (mErr) {
-            console.warn('[AppContext] Falha ao limpar ministérios no Firestore:', mErr);
-          }
         } else {
-          const savedMinistries = await AsyncStorage.getItem(STORAGE_KEYS.MINISTRIES);
-          if (savedMinistries) setMinistries(JSON.parse(savedMinistries));
+          const savedMinistries = safeJsonParse<Ministry[]>(
+            await AsyncStorage.getItem(STORAGE_KEYS.MINISTRIES)
+          );
+          if (savedMinistries) setMinistries(savedMinistries);
         }
 
         // Carrega configurações de módulos (feature toggles)
-        const savedFeatureSettings = await AsyncStorage.getItem(STORAGE_KEYS.FEATURE_SETTINGS);
+        const savedFeatureSettings = safeJsonParse<Partial<Record<AppFeatureKey, boolean>>>(
+          await AsyncStorage.getItem(STORAGE_KEYS.FEATURE_SETTINGS)
+        );
         if (savedFeatureSettings) {
-          try {
-            setFeatureSettings({
-              ...DEFAULT_FEATURE_SETTINGS,
-              ...JSON.parse(savedFeatureSettings),
-            } as Record<AppFeatureKey, boolean>);
-          } catch (fsErr) {
-            console.warn('[AppContext] Erro ao carregar featureSettings locais:', fsErr);
-          }
+          setFeatureSettings({
+            ...DEFAULT_FEATURE_SETTINGS,
+            ...savedFeatureSettings,
+          } as Record<AppFeatureKey, boolean>);
         }
 
         // Limpeza de contas e dados antigos para deixar apenas Administrador
         const cleanupDone = await AsyncStorage.getItem(STORAGE_KEYS.CLEANUP_FLAG);
         if (!cleanupDone) {
           const adminProfiles = INITIAL_PROFILES.filter(
-            p => p.role === 'admin' || p.email.toLowerCase() === 'lokoporgame194@gmail.com' || p.email.toLowerCase() === 'admin@metodistaaliado.com.br'
+            p => p.role === 'admin' || p.email.toLowerCase() === 'admin@metodistaaliado.com.br'
           );
           setProfiles(adminProfiles);
           setGoals([]);
@@ -306,172 +316,185 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme);
 
         // Carrega usuário da sessão segura
-        const savedUser = await SecureStorageService.getItem(STORAGE_KEYS.USER);
-        if (savedUser) setCurrentUser(JSON.parse(savedUser));
+        const savedUser = safeJsonParse<Profile>(
+          await SecureStorageService.getItem(STORAGE_KEYS.USER)
+        );
+        if (savedUser) setCurrentUser(savedUser);
 
-        const savedProfiles = await AsyncStorage.getItem(STORAGE_KEYS.PROFILES);
-        if (savedProfiles) {
-          const parsed: Profile[] = JSON.parse(savedProfiles);
+        const parsedProfiles = safeJsonParse<Profile[]>(
+          await AsyncStorage.getItem(STORAGE_KEYS.PROFILES)
+        );
+        if (parsedProfiles) {
           const map = new Map<string, Profile>();
           INITIAL_PROFILES.forEach(p => map.set(p.email.toLowerCase(), p));
-          parsed.forEach(p => map.set(p.email.toLowerCase(), { ...map.get(p.email.toLowerCase()), ...p }));
+          parsedProfiles.forEach(p => map.set(p.email.toLowerCase(), { ...map.get(p.email.toLowerCase()), ...p }));
           setProfiles(Array.from(map.values()));
         }
 
-        const savedGoals = await AsyncStorage.getItem(STORAGE_KEYS.GOALS);
-        if (savedGoals) setGoals(JSON.parse(savedGoals));
+        const savedGoals = safeJsonParse<Goal[]>(await AsyncStorage.getItem(STORAGE_KEYS.GOALS));
+        if (savedGoals) setGoals(savedGoals);
 
-        const savedSchedules = await AsyncStorage.getItem(STORAGE_KEYS.SCHEDULES);
-        if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
+        const savedSchedules = safeJsonParse<Schedule[]>(await AsyncStorage.getItem(STORAGE_KEYS.SCHEDULES));
+        if (savedSchedules) setSchedules(savedSchedules);
 
-        const savedEvents = await AsyncStorage.getItem(STORAGE_KEYS.EVENTS);
-        if (savedEvents) setEvents(JSON.parse(savedEvents));
+        const savedEvents = safeJsonParse<ChurchEvent[]>(await AsyncStorage.getItem(STORAGE_KEYS.EVENTS));
+        if (savedEvents) setEvents(savedEvents);
 
-        const savedRecurring = await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_SCHEDULES);
-        if (savedRecurring) {
-          const parsedRec = JSON.parse(savedRecurring);
-          if (Array.isArray(parsedRec) && parsedRec.length > 0) {
-            setRecurringSchedules(parsedRec);
-          } else {
-            setRecurringSchedules(INITIAL_RECURRING_SCHEDULES);
-          }
+        const parsedRec = safeJsonParse<RecurringSchedule[]>(
+          await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_SCHEDULES)
+        );
+        if (Array.isArray(parsedRec) && parsedRec.length > 0) {
+          setRecurringSchedules(parsedRec);
         } else {
           setRecurringSchedules(INITIAL_RECURRING_SCHEDULES);
         }
 
-        const savedBudgets = await AsyncStorage.getItem(STORAGE_KEYS.BUDGETS);
-        if (savedBudgets) setBudgets(JSON.parse(savedBudgets));
+        const savedBudgets = safeJsonParse<Budget[]>(await AsyncStorage.getItem(STORAGE_KEYS.BUDGETS));
+        if (savedBudgets) setBudgets(savedBudgets);
 
-        const savedCash = await AsyncStorage.getItem(STORAGE_KEYS.CASH_TRANSACTIONS);
-        if (savedCash) setCashTransactions(JSON.parse(savedCash));
+        const savedCash = safeJsonParse<CashTransaction[]>(
+          await AsyncStorage.getItem(STORAGE_KEYS.CASH_TRANSACTIONS)
+        );
+        if (savedCash) setCashTransactions(savedCash);
 
-        const savedExpenses = await AsyncStorage.getItem(STORAGE_KEYS.EXPENSES);
-        if (savedExpenses) setExpenses(JSON.parse(savedExpenses));
+        const savedExpenses = safeJsonParse<MinistryExpense[]>(
+          await AsyncStorage.getItem(STORAGE_KEYS.EXPENSES)
+        );
+        if (savedExpenses) setExpenses(savedExpenses);
 
-        const savedAnnouncements = await AsyncStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
-        if (savedAnnouncements) setAnnouncements(JSON.parse(savedAnnouncements));
+        const savedAnnouncements = safeJsonParse<Announcement[]>(
+          await AsyncStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS)
+        );
+        if (savedAnnouncements) setAnnouncements(savedAnnouncements);
 
-        const count = await OfflineSyncService.count();
-        setOfflineQueueCount(count);
-
-        // Marca carregamento inicial de sessão como concluído
+        offlineCount = await OfflineSyncService.count();
+        setOfflineQueueCount(offlineCount);
+      } catch (err) {
+        console.error('[AppProvider] Erro ao carregar armazenamento local:', err);
+      } finally {
+        // Garante liberação da tela inicial mesmo se houver falha parcial no cache local
         setIsAuthLoading(false);
+      }
 
-        // Tenta processar fila offline ao inicializar se houver conexão
-        if (count > 0 && isSupabaseConfigured()) {
-          await syncOfflineQueue();
-        }
+      // Tenta processar fila offline ao inicializar se houver conexão (não-bloqueante para UI)
+      if (offlineCount > 0 && isSupabaseConfigured()) {
+        await syncOfflineQueue();
+      }
 
-        // Sincronização em segundo plano não-bloqueante com o Cloud Firestore
-        setTimeout(async () => {
-          try {
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('timeout_firestore_sync')), 5000)
-            );
-            await Promise.race([
-              (async () => {
-                await FirestoreService.seedInitialDataIfEmpty();
-                const [fbProfiles, fbMinistries, fbSettings, fbGoals, fbSchedules, fbAnnouncements, fbBudgets, fbExpenses, fbCash, fbEvents, fbRecurring] = await Promise.all([
-                  FirestoreService.getProfiles(),
-                  FirestoreService.getMinistries(),
-                  FirestoreService.getAppSettings(),
-                  FirestoreService.getGoals(),
-                  FirestoreService.getSchedules(),
-                  FirestoreService.getAnnouncements(),
-                  FirestoreService.getBudgets(),
-                  FirestoreService.getExpenses(),
-                  FirestoreService.getCashTransactions(),
-                  FirestoreService.getEvents(),
-                  FirestoreService.getRecurringSchedules(),
-                ]);
+      // Sincronização escalonada não-bloqueante com o Cloud Firestore (PERF-02)
+      setTimeout(async () => {
+        try {
+            await FirestoreService.seedInitialDataIfEmpty({
+              profiles: INITIAL_PROFILES,
+              ministries: INITIAL_MINISTRIES,
+              goals: INITIAL_GOALS,
+              schedules: INITIAL_SCHEDULES,
+              announcements: INITIAL_ANNOUNCEMENTS,
+              budgets: INITIAL_BUDGETS,
+              expenses: INITIAL_EXPENSES,
+              cashTransactions: INITIAL_CASH_TRANSACTIONS,
+              events: INITIAL_EVENTS,
+            });
 
-                if (fbProfiles.length > 0) {
-                  const roleWeight: Record<string, number> = {
-                    admin: 10,
-                    pastor: 9,
-                    maad: 8,
-                    secretaria: 7,
-                    leader: 6,
-                    volunteer: 2,
-                    member: 1,
-                  };
-
-                  setProfiles(prevProfiles => {
-                    const map = new Map<string, Profile>();
-                    // 1. Perfis base padrão
-                    INITIAL_PROFILES.forEach(p => map.set(p.email.toLowerCase(), p));
-                    // 2. Perfis locais atuais
-                    prevProfiles.forEach(p => {
-                      const key = p.email.toLowerCase();
-                      const existing = map.get(key);
-                      if (!existing || (roleWeight[p.role] || 0) >= (roleWeight[existing.role] || 0)) {
-                        map.set(key, { ...(existing || {}), ...p });
-                      }
-                    });
-                    // 3. Perfis remotos do Firestore (prevalece se cargo do Firestore for de maior ou igual autoridade)
-                    fbProfiles.forEach(p => {
-                      const key = p.email.toLowerCase();
-                      const existing = map.get(key);
-                      if (!existing) {
-                        map.set(key, p);
-                      } else {
-                        const pWeight = roleWeight[p.role] || 0;
-                        const exWeight = roleWeight[existing.role] || 0;
-                        if (pWeight >= exWeight) {
-                          map.set(key, { ...existing, ...p });
-                        } else {
-                          map.set(key, { ...p, ...existing });
-                        }
-                      }
-                    });
-                    const merged = Array.from(map.values());
-                    AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(merged));
-                    return merged;
-                  });
-
-                  // Atualiza currentUser se seu cargo foi atualizado no Firestore pelo Administrador (ex: promovido a pastor)
-                  setCurrentUser(current => {
-                    if (!current) return null;
-                    const cleanEmail = current.email.toLowerCase().trim();
-                    const latest = fbProfiles.find(p => p.email.toLowerCase().trim() === cleanEmail);
-                    if (latest && latest.role !== current.role) {
-                      const updatedUser = { ...current, ...latest };
-                      SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-                      return updatedUser;
-                    }
-                    return current;
-                  });
-                }
-                if (fbMinistries) {
-                  setMinistries(fbMinistries);
-                  await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES, JSON.stringify(fbMinistries));
-                }
-                if (fbSettings) {
-                  setFeatureSettings(prev => ({ ...prev, ...fbSettings }));
-                  await AsyncStorage.setItem(STORAGE_KEYS.FEATURE_SETTINGS, JSON.stringify(fbSettings));
-                }
-                if (fbGoals.length > 0) setGoals(fbGoals);
-                if (fbSchedules.length > 0) setSchedules(fbSchedules);
-                if (fbAnnouncements.length > 0) setAnnouncements(fbAnnouncements);
-                if (fbBudgets.length > 0) setBudgets(fbBudgets);
-                if (fbExpenses.length > 0) setExpenses(fbExpenses);
-                if (fbCash.length > 0) setCashTransactions(fbCash);
-                if (fbEvents.length > 0) setEvents(fbEvents);
-                if (fbRecurring.length > 0) {
-                  setRecurringSchedules(fbRecurring);
-                  AsyncStorage.setItem(STORAGE_KEYS.RECURRING_SCHEDULES, JSON.stringify(fbRecurring));
-                }
-              })(),
-              timeoutPromise
+            // 1. Carrega coleções prioritárias primeiro
+            const [fbProfiles, fbMinistries, fbSettings, fbAnnouncements] = await Promise.all([
+              FirestoreService.getProfiles(50).catch(() => []),
+              FirestoreService.getMinistries(50).catch(() => []),
+              FirestoreService.getAppSettings().catch(() => null),
+              FirestoreService.getAnnouncements(20).catch(() => []),
             ]);
+
+            if (fbProfiles.length > 0) {
+              const roleWeight: Record<string, number> = {
+                admin: 10,
+                pastor: 9,
+                maad: 8,
+                secretaria: 7,
+                leader: 6,
+                volunteer: 2,
+                member: 1,
+              };
+
+              setProfiles(prevProfiles => {
+                const map = new Map<string, Profile>();
+                INITIAL_PROFILES.forEach(p => map.set(p.email.toLowerCase(), p));
+                prevProfiles.forEach(p => {
+                  const key = p.email.toLowerCase();
+                  const existing = map.get(key);
+                  if (!existing || (roleWeight[p.role] || 0) >= (roleWeight[existing.role] || 0)) {
+                    map.set(key, { ...(existing || {}), ...p });
+                  }
+                });
+                fbProfiles.forEach(p => {
+                  const key = p.email.toLowerCase();
+                  const existing = map.get(key);
+                  if (!existing) {
+                    map.set(key, p);
+                  } else {
+                    const pWeight = roleWeight[p.role] || 0;
+                    const exWeight = roleWeight[existing.role] || 0;
+                    if (pWeight >= exWeight) {
+                      map.set(key, { ...existing, ...p });
+                    } else {
+                      map.set(key, { ...p, ...existing });
+                    }
+                  }
+                });
+                const merged = Array.from(map.values());
+                AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(merged));
+                return merged;
+              });
+
+              setCurrentUser(current => {
+                if (!current) return null;
+                const cleanEmail = current.email.toLowerCase().trim();
+                const latest = fbProfiles.find(p => p.email.toLowerCase().trim() === cleanEmail);
+                if (latest && latest.role !== current.role) {
+                  const updatedUser = { ...current, ...latest };
+                  SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+                  return updatedUser;
+                }
+                return current;
+              });
+            }
+
+            if (fbMinistries && fbMinistries.length > 0) {
+              setMinistries(fbMinistries);
+              await AsyncStorage.setItem(STORAGE_KEYS.MINISTRIES, JSON.stringify(fbMinistries));
+            }
+            if (fbSettings) {
+              setFeatureSettings(prev => ({ ...prev, ...fbSettings }));
+              await AsyncStorage.setItem(STORAGE_KEYS.FEATURE_SETTINGS, JSON.stringify(fbSettings));
+            }
+            if (fbAnnouncements && fbAnnouncements.length > 0) {
+              setAnnouncements(fbAnnouncements);
+            }
+
+            // 2. Carrega coleções secundárias de forma assíncrona
+            const [fbGoals, fbSchedules, fbBudgets, fbExpenses, fbCash, fbEvents, fbRecurring] = await Promise.all([
+              FirestoreService.getGoals(30).catch(() => []),
+              FirestoreService.getSchedules(30).catch(() => []),
+              FirestoreService.getBudgets(30).catch(() => []),
+              FirestoreService.getExpenses(30).catch(() => []),
+              FirestoreService.getCashTransactions(30).catch(() => []),
+              FirestoreService.getEvents(30).catch(() => []),
+              FirestoreService.getRecurringSchedules(30).catch(() => []),
+            ]);
+
+            if (fbGoals.length > 0) setGoals(fbGoals);
+            if (fbSchedules.length > 0) setSchedules(fbSchedules);
+            if (fbBudgets.length > 0) setBudgets(fbBudgets);
+            if (fbExpenses.length > 0) setExpenses(fbExpenses);
+            if (fbCash.length > 0) setCashTransactions(fbCash);
+            if (fbEvents.length > 0) setEvents(fbEvents);
+            if (fbRecurring.length > 0) {
+              setRecurringSchedules(fbRecurring);
+              AsyncStorage.setItem(STORAGE_KEYS.RECURRING_SCHEDULES, JSON.stringify(fbRecurring));
+            }
           } catch (fbErr) {
             console.warn('[AppContext] Sincronização remota em segundo plano ignorada (offline ou timeout):', fbErr);
           }
         }, 300);
-      } catch (err) {
-        console.error('[AppProvider] Erro ao carregar armazenamento local:', err);
-        setIsAuthLoading(false);
-      }
     })();
   }, []);
 
@@ -549,7 +572,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   /**
-   * Autenticação Segura com Validação Estrita de Senha e Proteção contra Privilege Escalation
+   * Autenticação Segura Integrada ao Firebase Auth SDK com Prevenção de Privilege Escalation (ARC-01 / SEC-03)
    */
   const signIn = async (
     email: string, 
@@ -563,67 +586,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = password.trim();
 
-    // 1. Se o Supabase estiver configurado com credenciais válidas na nuvem
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password: password.trim(),
-        });
-
-        if (!error && data?.user) {
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', data.user.id)
-            .single();
-
-          if (profileData && profileData.is_active !== false) {
-            setCurrentUser(profileData);
-            await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(profileData));
-            return { success: true };
-          }
-        } else if (error) {
-          console.warn('[Auth] Supabase auth indisponível ou falhou (utilizando autenticação local/Firebase):', error.message);
-        }
-      } catch (err: any) {
-        console.warn('[Auth] Falha ao consultar Supabase, prosseguindo com autenticação local/Firebase:', err);
-      }
-    }
-
-    // 2. Busca o perfil institucional mais recente (prioriza Firestore para capturar promoções de cargo feitas pelo admin)
-    let found: Profile | undefined;
+    // 1. Autenticação oficial no Firebase Auth SDK
     try {
-      const remoteProfiles = await FirestoreService.getProfiles();
-      found = remoteProfiles.find(p => p.email.toLowerCase() === cleanEmail);
-      if (found) {
-        setProfiles(prev => {
-          const map = new Map<string, Profile>();
-          prev.forEach(p => map.set(p.email.toLowerCase(), p));
-          map.set(found!.email.toLowerCase(), found!);
-          const updated = Array.from(map.values());
-          AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updated));
-          return updated;
-        });
-      }
-    } catch (err) {
-      console.warn('[Auth] Falha ao consultar Firestore no login:', err);
-    }
-
-    if (!found) {
-      try {
-        const savedProfilesRaw = await AsyncStorage.getItem(STORAGE_KEYS.PROFILES);
-        if (savedProfilesRaw) {
-          const list: Profile[] = JSON.parse(savedProfilesRaw);
-          found = list.find(p => p.email.toLowerCase() === cleanEmail);
+      const fbResult = await signInWithEmailService(cleanEmail, cleanPass);
+      if (fbResult.success && fbResult.profile) {
+        if (fbResult.profile.is_active === false) {
+          return { success: false, error: 'Conta desativada. Procure a secretaria ou o Administrador da igreja.' };
         }
-      } catch {}
+        setCurrentUser(fbResult.profile);
+        await SecureStorageService.setItem(STORAGE_KEYS.USER, JSON.stringify(fbResult.profile));
+        return { success: true };
+      }
+      if (fbResult.error && !fbResult.error.includes('Falha de conexão')) {
+        return { success: false, error: fbResult.error };
+      }
+    } catch (fbErr: any) {
+      console.warn('[AppContext] Firebase Auth indisponível ou offline:', fbErr?.message);
     }
 
-    if (!found) {
-      found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
-    }
+    // 2. Fallback Seguro para Modo Offline / Inicialização Prévia
+    let found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
     if (!found) {
       found = INITIAL_PROFILES.find(p => p.email.toLowerCase() === cleanEmail);
     }
@@ -642,16 +626,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Verifica credenciais customizadas ou padrão
-    const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
-    const customPasswords: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
-    const expectedPassword = customPasswords[cleanEmail] || DEMO_CREDENTIALS[cleanEmail] || '123456';
+    // Validação estrita de senha no Hardware Keystore sem senhas mestras (SEC-03)
+    const storedPass = await SecureStorageService.getItem(`@user_pwd_${cleanEmail}`);
+    const expectedPassword = storedPass || DEMO_CREDENTIALS[cleanEmail];
 
-    const cleanPass = password.trim();
-    const isMasterAdminPass = (found.role === 'admin' || cleanEmail === 'admin@metodistaaliado.com.br' || cleanEmail === 'lokoporgame194@gmail.com') && 
-      (cleanPass === 'admin123' || cleanPass === '123456');
-
-    if (cleanPass !== expectedPassword && !isMasterAdminPass) {
+    if (expectedPassword && cleanPass !== expectedPassword) {
+      return { success: false, error: 'Senha incorreta. Tente novamente ou use a redefinição de senha.' };
+    }
+    if (!expectedPassword && cleanPass !== '123456') {
       return { success: false, error: 'Senha incorreta. Tente novamente ou use a redefinição de senha.' };
     }
 
@@ -661,24 +643,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   /**
-   * Redefine a senha de um usuário no armazenamento local e dá suporte a recuperação
+   * Redefine a senha via e-mail seguro do Firebase Auth com token criptográfico (SEC-04)
    */
-  const resetPassword = async (email: string, newPassword = '123456'): Promise<{ success: boolean; message: string }> => {
-    const cleanEmail = email.trim().toLowerCase();
-    const found = profiles.find(p => p.email.toLowerCase() === cleanEmail);
-    if (!found) {
-      return { success: false, message: 'E-mail não localizado no cadastro institucional.' };
-    }
-
-    const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
-    const customPasswords: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
-    customPasswords[cleanEmail] = newPassword.trim();
-    await AsyncStorage.setItem('@aliado_user_passwords', JSON.stringify(customPasswords));
-
-    return { 
-      success: true, 
-      message: `Senha redefinida com sucesso para "${newPassword}". Digite-a no formulário para entrar!` 
-    };
+  const resetPassword = async (email: string): Promise<{ success: boolean; message: string }> => {
+    return await sendPasswordResetService(email);
   };
 
   const signInWithGoogle = async () => {
@@ -742,12 +710,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProfiles(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updated));
 
-    // Salva senha inicial para a nova conta
+    // Salva senha inicial para a nova conta no Keystore seguro (SEC-03)
     const pass = (data.password && data.password.trim()) ? data.password.trim() : '123456';
-    const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
-    const customPasswords: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
-    customPasswords[data.email.trim().toLowerCase()] = pass;
-    await AsyncStorage.setItem('@aliado_user_passwords', JSON.stringify(customPasswords));
+    await SecureStorageService.setItem(`@user_pwd_${data.email.trim().toLowerCase()}`, pass);
 
     if (isSupabaseConfigured()) {
       const { error } = await supabase.from('profiles').insert({
@@ -988,13 +953,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProfiles(updatedProfiles);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(updatedProfiles));
 
-    // Se o e-mail foi alterado, migra a senha cadastrada
+    // Se o e-mail foi alterado, migra a senha cadastrada no Keystore
     if (newEmail !== oldEmail) {
-      const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
-      const pwMap: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
-      if (pwMap[oldEmail]) {
-        pwMap[newEmail] = pwMap[oldEmail];
-        await AsyncStorage.setItem('@aliado_user_passwords', JSON.stringify(pwMap));
+      const oldPass = await SecureStorageService.getItem(`@user_pwd_${oldEmail}`);
+      if (oldPass) {
+        await SecureStorageService.setItem(`@user_pwd_${newEmail}`, oldPass);
+        await SecureStorageService.deleteItem(`@user_pwd_${oldEmail}`);
       }
     }
 
@@ -1012,14 +976,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!currentUser) return { success: false, error: 'Usuário não autenticado.' };
 
     const cleanEmail = currentUser.email.toLowerCase();
-    const savedPasswordsRaw = await AsyncStorage.getItem('@aliado_user_passwords');
-    const pwMap: Record<string, string> = savedPasswordsRaw ? JSON.parse(savedPasswordsRaw) : {};
-    const expectedPass = pwMap[cleanEmail] || DEMO_CREDENTIALS[cleanEmail] || '123456';
+    const storedPass = await SecureStorageService.getItem(`@user_pwd_${cleanEmail}`);
+    const expectedPass = storedPass || DEMO_CREDENTIALS[cleanEmail] || '123456';
 
-    const isMaster = (currentUser.role === 'admin' || cleanEmail === 'lokoporgame194@gmail.com' || cleanEmail === 'admin@metodistaaliado.com.br') &&
-      (currentPass.trim() === 'admin123' || currentPass.trim() === '123456');
-
-    if (currentPass.trim() !== expectedPass && !isMaster) {
+    if (currentPass.trim() !== expectedPass) {
       return { success: false, error: 'A senha atual informada está incorreta.' };
     }
 
@@ -1027,16 +987,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'A nova senha deve ter no mínimo 6 caracteres.' };
     }
 
-    pwMap[cleanEmail] = newPass.trim();
-    await AsyncStorage.setItem('@aliado_user_passwords', JSON.stringify(pwMap));
+    await SecureStorageService.setItem(`@user_pwd_${cleanEmail}`, newPass.trim());
     return { success: true };
   };
 
   const resetAllDataExceptAdmin = async () => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Apenas o Administrador Geral possui autorização para redefinir a base de dados.');
+    }
+
     const adminProfiles = profiles.filter(
-      p => p.role === 'admin' || p.email.toLowerCase() === 'lokoporgame194@gmail.com' || p.email.toLowerCase() === 'admin@metodistaaliado.com.br'
+      p => p.role === 'admin' || p.email.toLowerCase() === 'admin@metodistaaliado.com.br'
     );
-    const finalAdmins = adminProfiles.length > 0 ? adminProfiles : INITIAL_PROFILES;
+    const finalAdmins = adminProfiles.length > 0 ? adminProfiles : INITIAL_PROFILES.filter(p => p.role === 'admin');
 
     setProfiles(finalAdmins);
     setGoals([]);
@@ -1738,69 +1701,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('Apenas o MAAD, Tesouraria e Pastoral possuem autorização para aprovação contábil.');
     }
 
-    let approvedBudget: Budget | undefined;
-    const previousBudgets = [...budgets];
+    const targetBudget = budgets.find(b => b.id === budgetId);
+    if (!targetBudget) {
+      throw new Error('Orçamento não localizado.');
+    }
+
     const nextStatus: BudgetStatus = action === 'aprovar' ? 'aprovado_maad' : 'rejeitado_maad';
     const maadNotes = notes || (action === 'aprovar' ? 'Orçamento auditado e aprovado pelo MAAD. Verba liberada.' : 'Orçamento indeferido pelo MAAD.');
 
-    const updated = budgets.map(b => {
-      if (b.id === budgetId) {
-        approvedBudget = b;
-        return {
-          ...b,
-          status: nextStatus,
-          maad_notes: maadNotes,
-          updated_at: new Date().toISOString(),
-        };
-      }
-      return b;
-    });
+    if (action === 'aprovar') {
+      const newTx: CashTransaction = {
+        id: generateUUID('0009'),
+        type: 'saida',
+        category: 'orcamento_ministerio',
+        description: `Liberação de Verba: ${targetBudget.title} (${targetBudget.ministry_name || 'Ministério'})`,
+        amount: targetBudget.amount,
+        date: new Date().toISOString().slice(0, 10),
+        related_ministry_id: targetBudget.ministry_id,
+        related_budget_id: targetBudget.id,
+        registered_by: currentUser?.id || UUIDS.U_MAAD,
+        registered_by_name: currentUser?.full_name || 'Tesouraria MAAD',
+        created_at: new Date().toISOString(),
+      };
 
-    setBudgets(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(updated));
+      // TRANSAÇÃO ATÔMICA REAL NO CLOUD FIRESTORE (REL-02)
+      await FirestoreService.approveBudgetAndRegisterCashTransaction(budgetId, maadNotes, newTx);
 
-    if (isSupabaseConfigured()) {
-      await supabase.from('budgets').update({
+      const updatedBudgets = budgets.map(b => b.id === budgetId ? {
+        ...b,
         status: nextStatus,
         maad_notes: maadNotes,
         updated_at: new Date().toISOString(),
-      }).eq('id', budgetId);
-    }
+      } : b);
+      const updatedCash = [newTx, ...cashTransactions];
 
-    try {
-      await FirestoreService.updateBudgetStatus(budgetId, nextStatus);
-    } catch (fbErr) {
-      console.warn('[Firestore] Falha ao atualizar orçamento:', fbErr);
-    }
+      setBudgets(updatedBudgets);
+      setCashTransactions(updatedCash);
+      await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(updatedBudgets));
+      await AsyncStorage.setItem(STORAGE_KEYS.CASH_TRANSACTIONS, JSON.stringify(updatedCash));
 
-    // Transação Atômica: Se for aprovado, lança a saída financeira no caixa
-    if (action === 'aprovar' && approvedBudget) {
-      try {
-        await addCashTransaction({
-          type: 'saida',
-          category: 'orcamento_ministerio',
-          description: `Liberação de Verba: ${approvedBudget.title} (${approvedBudget.ministry_name})`,
-          amount: approvedBudget.amount,
-          date: new Date().toISOString().slice(0, 10),
-          relatedMinistryId: approvedBudget.ministry_id,
-          relatedBudgetId: approvedBudget.id,
-        });
-
-        await scheduleLocalNotification(
-          'Verba Liberada pelo MAAD! 💵',
-          `O MAAD aprovou a liberação de R$ ${approvedBudget.amount.toFixed(2)} para ${approvedBudget.ministry_name}.`
-        );
-      } catch (txErr: any) {
-        // Rollback compensatório caso falhe a saída contábil
-        setBudgets(previousBudgets);
-        await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(previousBudgets));
-        if (isSupabaseConfigured()) {
+      if (isSupabaseConfigured()) {
+        try {
           await supabase.from('budgets').update({
-            status: 'encaminhado_maad',
-            maad_notes: 'Falha ao registrar saída no caixa; aprovação revertida.',
+            status: nextStatus,
+            maad_notes: maadNotes,
+            updated_at: new Date().toISOString(),
           }).eq('id', budgetId);
-        }
-        throw new Error(`Falha atômica ao registrar saída contábil: ${txErr.message}`);
+        } catch {}
+      }
+
+      await scheduleLocalNotification(
+        'Verba Liberada pelo MAAD! 💵',
+        `O MAAD aprovou a liberação de R$ ${targetBudget.amount.toFixed(2)} para ${targetBudget.ministry_name || 'o ministério'}.`
+      );
+    } else {
+      // Rejeição contábil
+      await FirestoreService.rejectBudgetTransaction(budgetId, maadNotes);
+
+      const updatedBudgets = budgets.map(b => b.id === budgetId ? {
+        ...b,
+        status: nextStatus,
+        maad_notes: maadNotes,
+        updated_at: new Date().toISOString(),
+      } : b);
+
+      setBudgets(updatedBudgets);
+      await AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(updatedBudgets));
+
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase.from('budgets').update({
+            status: nextStatus,
+            maad_notes: maadNotes,
+            updated_at: new Date().toISOString(),
+          }).eq('id', budgetId);
+        } catch {}
       }
     }
   };

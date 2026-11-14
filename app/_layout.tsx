@@ -45,7 +45,7 @@ class RootErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
             A equipe técnica da Igreja Metodista Aliado já foi notificada.
           </Text>
           <Text style={styles.errorMessage}>
-            {this.state.error?.message || 'Erro de execução'}
+            O aplicativo encontrou uma instabilidade temporária. Os seus dados e cadastros permanecem salvos em segurança.
           </Text>
           <TouchableOpacity 
             style={styles.retryButton} 
@@ -67,14 +67,6 @@ function RootNavigator() {
   const { theme, isAuthLoading } = useApp();
   const themeColors = getThemeColors(theme);
   const isDark = theme === 'dark';
-
-  if (isAuthLoading) {
-    return (
-      <View style={[styles.loadingContainer, { backgroundColor: isDark ? '#0F172A' : '#FFFFFF' }]}>
-        <ActivityIndicator size="large" color="#DC2626" />
-      </View>
-    );
-  }
 
   return (
     <>
@@ -173,6 +165,17 @@ function RootNavigator() {
           }}
         />
       </Stack>
+      {isAuthLoading && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            styles.loadingContainer,
+            { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' },
+          ]}
+        >
+          <ActivityIndicator size="large" color="#DC2626" />
+        </View>
+      )}
     </>
   );
 }

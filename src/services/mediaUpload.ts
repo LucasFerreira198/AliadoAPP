@@ -37,7 +37,7 @@ export async function uploadMediaToFirebase(
     return { url: downloadUrl, isRemote: true };
   } catch (err: any) {
     console.warn('[UploadMedia] Falha no upload para Firebase Storage:', err);
-    return { url: localUri, isRemote: false, error: err?.message };
+    return { url: '', isRemote: false, error: err?.message };
   }
 }
 
@@ -57,7 +57,7 @@ export async function uploadMediaToSupabase(
   }
 
   if (!isSupabaseConfigured()) {
-    return { url: localUri, isRemote: false };
+    return { url: '', isRemote: false, error: 'Provedores de upload em nuvem indisponíveis.' };
   }
 
   try {
@@ -118,5 +118,5 @@ export async function uploadMedia(localUri: string, folder = 'uploads'): Promise
     return uploadMediaToSupabase(localUri, folder);
   }
 
-  return { url: localUri, isRemote: false };
+  return { url: '', isRemote: false, error: 'Provedores de upload em nuvem indisponíveis.' };
 }

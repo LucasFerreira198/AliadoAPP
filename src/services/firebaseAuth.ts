@@ -1,27 +1,33 @@
 import {
   signInWithPopup,
   GoogleAuthProvider,
-  signInWithCredential,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut as firebaseSignOut,
   type UserCredential,
 } from 'firebase/auth';
 import { Platform } from 'react-native';
 import { auth, db, cleanForFirestore } from './firebase';
-import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import type { Profile, UserRole } from '../types';
 import { INITIAL_PROFILES } from './mockData';
 
-export interface GoogleAuthResult {
+export interface AuthResult {
   success: boolean;
   profile?: Profile;
   error?: string;
 }
 
+export interface PasswordResetResult {
+  success: boolean;
+  message: string;
+}
+
 /**
- * Cria ou recupera o perfil institucional no Firestore vinculado à conta Google,
- * consolidando contas criadas previamente pelo Administrador por e-mail.
+ * Cria ou recupera o perfil institucional no Firestore vinculado à conta Google ou E-mail,
+ * consolidando contas criadas previamente pela Administração.
  */
-async function syncGoogleUserProfile(user: any): Promise<Profile> {
+export async function syncGoogleUserProfile(user: any): Promise<Profile> {
   const email = (user.email || '').toLowerCase().trim();
   const profileRef = doc(db, 'profiles', user.uid);
   let existingProfile: Profile | null = null;
@@ -35,16 +41,14 @@ async function syncGoogleUserProfile(user: any): Promise<Profile> {
     console.warn('[FirebaseAuth] Não foi possível buscar perfil existente por UID:', err);
   }
 
-  // Verifica se existe alguma conta cadastrada pelo Admin com este e-mail no Firestore
-  // (pode ter sido criada com um UUID antes do primeiro login Google do usuário)
-  if (email) {
+  // Verifica se existe alguma conta cadastrada com este e-mail no Firestore
+  if (email && !existingProfile) {
     try {
       const q = query(collection(db, 'profiles'), where('email', '==', email));
       const querySnap = await getDocs(q);
       querySnap.docs.forEach(docSnap => {
         const otherData = docSnap.data() as Profile;
         if (docSnap.id !== user.uid) {
-          // Se encontrou outra conta criada pelo admin com este e-mail e cargo prioritário
           if (!existingProfile || (otherData.role && otherData.role !== 'volunteer' && otherData.role !== 'member')) {
             existingProfile = {
               ...(existingProfile || {}),
@@ -54,43 +58,38 @@ async function syncGoogleUserProfile(user: any): Promise<Profile> {
               full_name: otherData.full_name || user.displayName || existingProfile?.full_name || 'Membro da Igreja',
             };
           }
-          // Remove documento legado para manter um único ID determinístico (o UID do Firebase Auth)
-          deleteDoc(docSnap.ref).catch(() => {});
-        } else if (otherData.role && otherData.role !== 'volunteer' && otherData.role !== 'member') {
-          if (existingProfile) {
-            existingProfile.role = otherData.role;
-          }
         }
       });
     } catch (err) {
-      console.warn('[FirebaseAuth] Erro ao consolidar contas por email no Firestore:', err);
+      console.warn('[FirebaseAuth] Erro ao consultar perfil institucional por email:', err);
     }
   }
 
-  // Verifica se o e-mail corresponde a um perfil pré-configurado
+  // Verifica perfis pré-configurados oficiais
   const preConfigured = INITIAL_PROFILES.find(p => p.email.toLowerCase() === email);
 
   if (existingProfile) {
-    if ((email === 'lokoporgame194@gmail.com' || preConfigured?.role === 'admin') && existingProfile.role !== 'admin') {
+    // Preserva o cargo institucional legítimo
+    if (preConfigured?.role === 'admin' && existingProfile.role !== 'admin') {
       existingProfile.role = 'admin';
     }
 
     try {
       await setDoc(profileRef, cleanForFirestore(existingProfile), { merge: true });
     } catch (err) {
-      console.warn('[FirebaseAuth] Aviso ao atualizar cargo no Firestore:', err);
+      console.warn('[FirebaseAuth] Aviso ao sincronizar perfil no Firestore:', err);
     }
     return existingProfile;
   }
+
+  const defaultRole: UserRole = preConfigured?.role ? preConfigured.role : 'member';
 
   const newProfile: Profile = {
     id: user.uid,
     full_name: user.displayName || preConfigured?.full_name || 'Membro da Igreja',
     email,
     phone: user.phoneNumber || preConfigured?.phone || '',
-    role: (email === 'lokoporgame194@gmail.com' || preConfigured?.role === 'admin')
-      ? 'admin'
-      : ((preConfigured?.role as UserRole) || 'volunteer'),
+    role: defaultRole,
     avatar_url: user.photoURL || preConfigured?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
     is_active: true,
   };
@@ -112,11 +111,91 @@ async function syncGoogleUserProfile(user: any): Promise<Profile> {
 }
 
 /**
+ * Autentica o usuário diretamente no Firebase Auth com E-mail e Senha,
+ * garantindo que auth.currentUser seja populado e as regras do Firestore funcionem com autenticação real.
+ */
+export async function signInWithEmailService(email: string, password: string): Promise<AuthResult> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPass = password.trim();
+
+  if (!cleanEmail || !cleanPass) {
+    return { success: false, error: 'E-mail e senha são obrigatórios.' };
+  }
+
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+    if (!userCredential.user) {
+      return { success: false, error: 'Falha ao recuperar sessão do usuário.' };
+    }
+
+    const profile = await syncGoogleUserProfile(userCredential.user);
+    return { success: true, profile };
+  } catch (err: any) {
+    console.warn('[FirebaseAuth] Falha na autenticação via Firebase Auth:', err.code || err.message);
+
+    if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+      return { success: false, error: 'E-mail ou senha incorretos.' };
+    }
+    if (err.code === 'auth/invalid-email') {
+      return { success: false, error: 'O formato do e-mail informado é inválido.' };
+    }
+    if (err.code === 'auth/user-disabled') {
+      return { success: false, error: 'Esta conta foi suspensa pela administração.' };
+    }
+    if (err.code === 'auth/too-many-requests') {
+      return { success: false, error: 'Muitas tentativas consecutivas. Tente novamente mais tarde.' };
+    }
+    if (err.code === 'auth/network-request-failed') {
+      return { success: false, error: 'Falha de conexão com os servidores de autenticação.' };
+    }
+
+    return { success: false, error: err.message || 'Falha ao autenticar no servidor.' };
+  }
+}
+
+/**
+ * Dispara e-mail oficial com token criptográfico de redefinição de senha através do Firebase Auth.
+ * Elimina completamente a redefinição arbitrária sem desafio de segurança (SEC-04).
+ */
+export async function sendPasswordResetService(email: string): Promise<PasswordResetResult> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+    return { success: false, message: 'Informe um endereço de e-mail válido.' };
+  }
+
+  try {
+    await sendPasswordResetEmail(auth, cleanEmail);
+    return {
+      success: true,
+      message: `Link de segurança enviado para ${cleanEmail}! Verifique sua caixa de entrada para criar uma nova senha.`,
+    };
+  } catch (err: any) {
+    console.warn('[FirebaseAuth] Erro ao enviar e-mail de redefinição:', err.code || err.message);
+
+    if (err.code === 'auth/user-not-found') {
+      // Mensagem genérica para mitigar User Enumeration
+      return {
+        success: true,
+        message: `Caso o e-mail esteja cadastrado, as instruções de redefinição foram enviadas para ${cleanEmail}.`,
+      };
+    }
+    if (err.code === 'auth/invalid-email') {
+      return { success: false, message: 'O endereço de e-mail informado é inválido.' };
+    }
+    if (err.code === 'auth/too-many-requests') {
+      return { success: false, message: 'Muitas solicitações recentes. Aguarde alguns instantes antes de tentar novamente.' };
+    }
+
+    return { success: false, message: err.message || 'Não foi possível solicitar a redefinição de senha.' };
+  }
+}
+
+/**
  * Executa o fluxo de autenticação com o Google.
  * No ambiente Web: executa signInWithPopup nativo do Firebase.
- * No ambiente Mobile: executa o fluxo com provedor do Google.
+ * No ambiente Mobile nativo: protege contra crashes provocados pela ausência de window.open no React Native (REL-01).
  */
-export async function signInWithGoogleService(): Promise<GoogleAuthResult> {
+export async function signInWithGoogleService(): Promise<AuthResult> {
   try {
     const provider = new GoogleAuthProvider();
     provider.addScope('profile');
@@ -132,11 +211,13 @@ export async function signInWithGoogleService(): Promise<GoogleAuthResult> {
       return { success: true, profile };
     }
 
-    // Ambiente Mobile (iOS / Android)
-    // No Expo Go / Native, usa signInWithPopup em navegadores ou o redirect
-    const result: UserCredential = await signInWithPopup(auth, provider);
-    const profile = await syncGoogleUserProfile(result.user);
-    return { success: true, profile };
+    // Ambiente Mobile Nativo (iOS / Android):
+    // signInWithPopup não é suportado pelo motor JavaScript do React Native.
+    // Retornamos mensagem instrutiva prevenindo crash fatal de execução.
+    return {
+      success: false,
+      error: 'O login social Google pelo navegador está disponível na versão Web. No aplicativo celular, faça login com seu e-mail e senha institucionais cadastrados na secretaria.',
+    };
   } catch (err: any) {
     console.warn('[FirebaseAuth] Erro no login com o Google:', err);
     if (err.code === 'auth/popup-closed-by-user') {
@@ -154,13 +235,7 @@ export async function signInWithGoogleService(): Promise<GoogleAuthResult> {
     if (err.code === 'auth/unauthorized-domain') {
       return { 
         success: false, 
-        error: 'Domínio web não autorizado no Firebase Console. Para acessar agora, faça login com seu e-mail e senha de administrador.' 
-      };
-    }
-    if (err.code === 'auth/operation-not-allowed') {
-      return { 
-        success: false, 
-        error: 'O provedor Google ainda não foi ativado no Firebase Console (Authentication > Sign-in method).' 
+        error: 'Domínio web não autorizado no Firebase Console.' 
       };
     }
     return { 
