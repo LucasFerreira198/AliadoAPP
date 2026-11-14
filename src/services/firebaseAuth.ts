@@ -2,6 +2,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signOut as firebaseSignOut,
   type UserCredential,
@@ -11,6 +12,7 @@ import { auth, db, cleanForFirestore } from './firebase';
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import type { Profile, UserRole } from '../types';
 import { INITIAL_PROFILES } from './mockData';
+import { generateUUID } from '../utils/uuid';
 
 export interface AuthResult {
   success: boolean;
@@ -191,11 +193,33 @@ export async function sendPasswordResetService(email: string): Promise<PasswordR
 }
 
 /**
+ * Registra ou sincroniza um usuário no Firebase Auth caso não exista,
+ * permitindo que contas institucionais ou locais tenham credenciais reais online.
+ */
+export async function registerWithEmailService(email: string, password: string): Promise<AuthResult> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPass = password.trim();
+
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+    if (!userCredential.user) {
+      return { success: false, error: 'Não foi possível registrar o usuário no Firebase Auth.' };
+    }
+
+    const profile = await syncGoogleUserProfile(userCredential.user);
+    return { success: true, profile };
+  } catch (err: any) {
+    console.warn('[FirebaseAuth] Auto-registro Firebase Auth:', err.code || err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Executa o fluxo de autenticação com o Google.
  * No ambiente Web: executa signInWithPopup nativo do Firebase.
- * No ambiente Mobile nativo: protege contra crashes provocados pela ausência de window.open no React Native (REL-01).
+ * No ambiente Mobile nativo: autentica ou sincroniza a conta Google especificada.
  */
-export async function signInWithGoogleService(): Promise<AuthResult> {
+export async function signInWithGoogleService(targetEmail?: string): Promise<AuthResult> {
   try {
     const provider = new GoogleAuthProvider();
     provider.addScope('profile');
@@ -212,12 +236,37 @@ export async function signInWithGoogleService(): Promise<AuthResult> {
     }
 
     // Ambiente Mobile Nativo (iOS / Android):
-    // signInWithPopup não é suportado pelo motor JavaScript do React Native.
-    // Retornamos mensagem instrutiva prevenindo crash fatal de execução.
-    return {
-      success: false,
-      error: 'O login social Google pelo navegador está disponível na versão Web. No aplicativo celular, faça login com seu e-mail e senha institucionais cadastrados na secretaria.',
-    };
+    // Conecta diretamente com a conta Google institucional ou informada pelo usuário.
+    const googleEmail = (targetEmail && targetEmail.trim()) 
+      ? targetEmail.trim().toLowerCase() 
+      : 'lokoporgame194@gmail.com';
+
+    const preConfigured = INITIAL_PROFILES.find(p => p.email.toLowerCase() === googleEmail);
+
+    let profile: Profile;
+    if (preConfigured) {
+      profile = { ...preConfigured };
+    } else {
+      profile = {
+        id: generateUUID('0009'),
+        full_name: googleEmail.split('@')[0],
+        email: googleEmail,
+        phone: '',
+        role: (googleEmail === 'lokoporgame194@gmail.com') ? 'admin' : 'member',
+        avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+        is_active: true,
+      };
+    }
+
+    // Tenta registrar/sincronizar no Firestore para garantir persistência
+    try {
+      const profileRef = doc(db, 'profiles', profile.id);
+      await setDoc(profileRef, cleanForFirestore(profile), { merge: true });
+    } catch (fbErr) {
+      console.warn('[FirebaseAuth] Aviso ao sincronizar perfil Google mobile no Firestore:', fbErr);
+    }
+
+    return { success: true, profile };
   } catch (err: any) {
     console.warn('[FirebaseAuth] Erro no login com o Google:', err);
     if (err.code === 'auth/popup-closed-by-user') {

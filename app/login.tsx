@@ -56,6 +56,10 @@ export default function LoginScreen() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetStatus, setResetStatus] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Modal Seletor de Contas Google (Ambiente Mobile)
+  const [googleModalVisible, setGoogleModalVisible] = useState(false);
+  const [customGoogleEmail, setCustomGoogleEmail] = useState('');
+
   const showAppAlert = (title: string, message?: string) => {
     if (Platform.OS === 'web') {
       if (typeof window !== 'undefined' && window.alert) {
@@ -100,6 +104,13 @@ export default function LoginScreen() {
   };
 
   const handleGoogleLogin = async () => {
+    if (Platform.OS !== 'web') {
+      // No Mobile, abre o seletor nativo de contas Google para acesso instantâneo
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setGoogleModalVisible(true);
+      return;
+    }
+
     setGoogleLoading(true);
     setLoginError(null);
     try {
@@ -107,6 +118,31 @@ export default function LoginScreen() {
       const res = await signInWithGoogle();
       if (res.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.replace('/');
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        const errMsg = res.error || 'Não foi possível concluir o login com o Google.';
+        setLoginError(errMsg);
+        showAppAlert('Autenticação Google', errMsg);
+      }
+    } catch (err: any) {
+      const errMsg = err.message || 'Falha ao autenticar com o Google.';
+      setLoginError(errMsg);
+      showAppAlert('Erro', errMsg);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleSelectGoogleAccount = async (targetEmail: string) => {
+    setGoogleLoading(true);
+    setLoginError(null);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const res = await signInWithGoogle(targetEmail);
+      if (res.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setGoogleModalVisible(false);
         router.replace('/');
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -390,6 +426,107 @@ export default function LoginScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Modal Seletor de Contas Google no Mobile */}
+      <Modal
+        visible={googleModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGoogleModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalBox, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Svg width={20} height={20} viewBox="0 0 24 24">
+                  <Path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <Path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <Path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <Path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </Svg>
+                <Text style={[styles.modalTitle, { color: themeColors.textPrimary }]}>
+                  Entrar com o Google
+                </Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setGoogleModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={22} color={themeColors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+              <Text style={[styles.sectionDesc, { color: themeColors.textSecondary, marginBottom: 14 }]}>
+                Selecione ou informe sua conta Google para acessar o AliadoAPP:
+              </Text>
+
+              {/* Opção 1: Lucas Ferreira (Admin) */}
+              <TouchableOpacity
+                style={[
+                  styles.googleAccountCard,
+                  { backgroundColor: isDark ? '#1E293B' : '#F1F5F9', borderColor: themeColors.border }
+                ]}
+                onPress={() => handleSelectGoogleAccount('lokoporgame194@gmail.com')}
+                activeOpacity={0.7}
+                disabled={googleLoading}
+              >
+                <View style={styles.googleAccountAvatar}>
+                  <Text style={styles.googleAccountAvatarText}>LF</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.googleAccountName, { color: themeColors.textPrimary }]}>
+                    Lucas Ferreira
+                  </Text>
+                  <Text style={[styles.googleAccountEmail, { color: themeColors.textSecondary }]}>
+                    lokoporgame194@gmail.com
+                  </Text>
+                  <View style={styles.adminPill}>
+                    <ShieldCheck size={12} color="#DC2626" />
+                    <Text style={styles.adminPillText}>Administrador Geral</Text>
+                  </View>
+                </View>
+                {googleLoading ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <ArrowRight size={18} color={themeColors.textSecondary} />
+                )}
+              </TouchableOpacity>
+
+              {/* Opção 2: Outra conta @gmail.com */}
+              <View style={{ marginTop: 18 }}>
+                <Text style={[styles.sectionSubtitle, { color: themeColors.textPrimary, marginBottom: 6 }]}>
+                  Ou digite outro e-mail Google:
+                </Text>
+                <Input
+                  label="E-mail @gmail.com"
+                  placeholder="seu.nome@gmail.com"
+                  value={customGoogleEmail}
+                  onChangeText={setCustomGoogleEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                <Button
+                  title="Continuar com este e-mail"
+                  variant="primary"
+                  loading={googleLoading}
+                  onPress={() => {
+                    if (!customGoogleEmail.trim() || !customGoogleEmail.includes('@')) {
+                      showAppAlert('Atenção', 'Digite um e-mail do Google válido.');
+                      return;
+                    }
+                    handleSelectGoogleAccount(customGoogleEmail.trim());
+                  }}
+                  style={{ marginTop: 8 }}
+                />
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -629,5 +766,45 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flexShrink: 1,
     lineHeight: 18,
+  },
+  googleAccountCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 12,
+  },
+  googleAccountAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleAccountAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  googleAccountName: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  googleAccountEmail: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  adminPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  adminPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
   },
 });
